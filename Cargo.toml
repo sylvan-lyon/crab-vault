@@ -1,0 +1,19 @@
+[package]
+name = "crab-vault"
+version = "0.1.0"
+edition = "2024"
+description = "An object storage service wirtten in rust."
+authors = ["Sylvan Lyon <sylvanlyon@gmail.com>"]
+
+[dependencies]
+anyhow = "1.0"
+axum = { version = "0.8", features = ["macros"] }
+bytes = { version = "1.10", features = ["serde"] }
+http-body-util = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.47", features = ["full"] }
+tower = { version = "0.5", features = ["tokio"] }
+tower-http = { version = "0.6", features = ["trace", "timeout", "cors", "limit", "normalize-path", "auth", "fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.18", features = ["v4"] }
