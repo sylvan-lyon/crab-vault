@@ -19,7 +19,9 @@ impl From<io::Error> for StorageError {
 impl IntoResponse for StorageError {
     fn into_response(self) -> Response {
         match self {
-            StorageError::Io(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+            StorageError::Io(e) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            }
             StorageError::NotFound => (StatusCode::NOT_FOUND, "Object not found").into_response(),
         }
     }

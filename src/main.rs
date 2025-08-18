@@ -10,7 +10,6 @@ use axum::{
     response::IntoResponse,
     routing::{delete, get, put},
 };
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 use storage::FileStorage;
 use tower_http::cors::{self, CorsLayer};
@@ -22,20 +21,7 @@ type AppState = Arc<FileStorage>;
 #[tokio::main]
 async fn main() {
     let conf_ref = &app_config::CONFIG;
-
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_target(true)
-                .with_level(true)
-                .with_ansi(true)
-                .with_file(true)
-                .with_line_number(true)
-                .with_thread_names(true)
-                .with_thread_ids(false)
-                .pretty(),
-        )
-        .init();
+    logger::init();
 
     let storage = FileStorage::new(conf_ref.data_mnt_point()).expect("Failed to create storage");
     let state = Arc::new(storage);
@@ -54,9 +40,10 @@ async fn main() {
         .route_layer(cors_layer)
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, app_config::CONFIG.port()))
-        .await
-        .unwrap();
+    let listener =
+        tokio::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, app_config::CONFIG.port()))
+            .await
+            .unwrap();
 
     tracing::info!(
         "Server running on http://{}",

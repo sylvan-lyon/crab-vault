@@ -7,21 +7,21 @@ pub static CONFIG: LazyLock<AppConfig> = LazyLock::new(|| {
     let default_conf = AppConfig::default();
     let cli_conf = AppConfig::parse();
     let file_conf: AppConfig = config::Config::builder()
-    .add_source(
-        config::File::with_name("crab-vault.toml")
-            .required(false)
-            .format(config::FileFormat::Toml),
-    )
-    .build()
-    .unwrap_or_else(|e| {
-        println!("无法读取配置文件！{e}");
-        exit(1);
-    })
-    .try_deserialize()
-    .unwrap_or_else(|e| {
-        println!("无法读取配置文件！{e}");
-        exit(1);
-    });
+        .add_source(
+            config::File::with_name("crab-vault.toml")
+                .required(false)
+                .format(config::FileFormat::Toml),
+        )
+        .build()
+        .unwrap_or_else(|e| {
+            println!("无法读取配置文件！{e}");
+            exit(1);
+        })
+        .try_deserialize()
+        .unwrap_or_else(|e| {
+            println!("无法读取配置文件！{e}");
+            exit(1);
+        });
 
     let curr_conf = default_conf;
     let curr_conf = file_conf.overwrite(curr_conf);
@@ -80,7 +80,7 @@ impl AppConfig {
     pub fn data_mnt_point(&self) -> &str {
         match &self.data_mnt_point {
             Some(val) => &val,
-            None => "./data"
+            None => "./data",
         }
     }
 
@@ -88,7 +88,7 @@ impl AppConfig {
     pub fn meta_mnt_point(&self) -> &str {
         match &self.meta_mnt_point {
             Some(val) => &val,
-            None => "./meta"
+            None => "./meta",
         }
     }
 }
