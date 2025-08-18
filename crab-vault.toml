@@ -1,0 +1,3 @@
+port = 8080
+data_mnt_point = "./data_point"
+meta_mnt_point = "./meta_point"

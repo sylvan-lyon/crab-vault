@@ -1,4 +1,6 @@
-mod error;
+mod app_config;
+mod common;
+mod logger;
 mod storage;
 
 use axum::{
@@ -13,10 +15,14 @@ use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 use storage::FileStorage;
 use tower_http::cors::{self, CorsLayer};
 
+use crate::common::errors::*;
+
 type AppState = Arc<FileStorage>;
 
 #[tokio::main]
 async fn main() {
+    let conf_ref = &app_config::CONFIG;
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
@@ -31,7 +37,7 @@ async fn main() {
         )
         .init();
 
-    let storage = FileStorage::new("./data").expect("Failed to create storage");
+    let storage = FileStorage::new(conf_ref.data_mnt_point()).expect("Failed to create storage");
     let state = Arc::new(storage);
 
     let cors_layer = CorsLayer::new()
@@ -48,7 +54,7 @@ async fn main() {
         .route_layer(cors_layer)
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, 32767))
+    let listener = tokio::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, app_config::CONFIG.port()))
         .await
         .unwrap();
 
@@ -67,7 +73,7 @@ async fn upload_object(
     State(storage): State<AppState>,
     Path((bucket, object)): Path<(String, String)>,
     body: bytes::Bytes,
-) -> Result<impl IntoResponse, error::StorageError> {
+) -> Result<impl IntoResponse, StorageError> {
     storage.put_object(&bucket, &object, &body).await?;
     Ok(StatusCode::CREATED)
 }
@@ -76,7 +82,7 @@ async fn upload_object(
 async fn get_object(
     State(storage): State<AppState>,
     Path((bucket, object)): Path<(String, String)>,
-) -> Result<impl IntoResponse, error::StorageError> {
+) -> Result<impl IntoResponse, StorageError> {
     let data = storage.get_object(&bucket, &object).await?;
     Ok(data)
 }
@@ -85,7 +91,7 @@ async fn get_object(
 async fn delete_object(
     State(storage): State<AppState>,
     Path((bucket, object)): Path<(String, String)>,
-) -> Result<impl IntoResponse, error::StorageError> {
+) -> Result<impl IntoResponse, StorageError> {
     storage.delete_object(&bucket, &object).await?;
     Ok(StatusCode::NO_CONTENT)
 }

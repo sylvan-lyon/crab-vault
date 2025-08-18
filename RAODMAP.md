@@ -18,11 +18,13 @@ graph TB
     API --> Meta[内存元数据]
     API --> Storage[本地文件存储]
 ```
-- [x] RESTful API端点 (GET/POST/DELETE)
+- [x] RESTful API端点 (GET/PUT/DELETE)
 - [x] 内存元数据管理
 - [x] 本地文件系统存储
 - [x] SHA-256数据校验
-- [ ] 错误处理
+- [x] 错误处理
+- [x] 桶(Bucket)概念引入
+- [ ] 配置文件支持 (TOML格式)
 - [ ] 基本单元测试
 
 ### 🔒 v0.3 - 元数据持久化
@@ -35,29 +37,31 @@ graph TB
     Storage[存储层] --> FS[文件系统]
 ```
 - [ ] 元数据引擎抽象层
+- [ ] 元数据缓存层 (LRU缓存)
+- [ ] 元数据备份/恢复机制
 - [ ] SQLite持久化存储
-- [ ] 配置文件支持 (TOML格式)
-- [ ] 桶(Bucket)概念引入
 - [ ] 分块上传支持
 - [ ] 基准测试套件
 
 ### 🌐 v0.5 - 分布式基础
 **架构升级**:
 ```mermaid
-graph TB
+graph LR
     Client --> LB[负载均衡]
-    LB --> Node1[节点1]
-    LB --> Node2[节点2]
-    subgraph 节点1
-        Meta1[元数据] --> Raft1[Raft共识]
-        Storage1[存储层]
+    LB --> Node1[节点]
+    LB --> Node2[节点]
+    subgraph 节点
+        API[API层] --> Meta[元数据]
+        API --> Storage[存储层]
+        Meta --> Raft[Raft共识]
     end
-    subgraph 节点2
-        Meta2[元数据] --> Raft2[Raft共识]
-        Storage2[存储层]
-    end
+    Raft -.->|跨节点| Raft集群
+    Storage -.->|数据复制| 其他节点
 ```
-- [ ] Raft共识协议实现
+- [ ] 引入 openraft
+- [ ] 数据分片策略 (一致性哈希)
+- [ ] 节点健康检查
+- [ ] 数据迁移工具
 - [ ] 节点自动发现
 - [ ] 数据复制机制
 - [ ] S3 API兼容层
@@ -79,7 +83,9 @@ graph LR
 - [ ] 服务端加密
 - [ ] 权限控制系统
 - [ ] 生命周期管理
-- [ ] Kubernetes Operator
+- [ ] 配额管理 (存储空间/请求速率)
+- [ ] 多租户隔离
+- [ ] 审计日志
 
 ### 🔮 未来方向
 - 全局命名空间

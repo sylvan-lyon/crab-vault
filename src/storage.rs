@@ -1,4 +1,4 @@
-use crate::error::StorageError;
+use crate::common::errors::StorageError;
 use std::{
     fs, io,
     path::{Path, PathBuf},
