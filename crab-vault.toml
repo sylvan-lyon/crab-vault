@@ -1,3 +1,4 @@
-port = 8080
-data_mnt_point = "./data_point"
-meta_mnt_point = "./meta_point"
+port = 32767
+data_source = "./data"
+meta_source = "./meta"
+log_level = "info"

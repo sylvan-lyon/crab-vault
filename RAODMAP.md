@@ -26,7 +26,20 @@ graph TB
 - [x] 桶(Bucket)概念引入
 - [x] 配置文件支持 (TOML格式)
 
-### 🔒 v0.3 - 元数据持久化
+### 🔒 v0.2 - 元数据持久化（文件系统）
+**架构升级**:
+```mermaid
+graph TB
+    API[API层] --> MetaDB[元数据引擎]
+    MetaDB --> FSMeta[文件系统]
+    Storage[存储层] --> FS[文件系统]
+```
+- [x] 元数据引擎抽象层
+- [x] 文件系统持久化存储
+- [ ] 文件上传时自动计算元数据
+- [ ] 分块上传支持
+
+### 🔒 v0.3 - 元数据持久化（嵌入式 SQLite）
 **架构升级**:
 ```mermaid
 graph TB
@@ -35,7 +48,6 @@ graph TB
     MetaDB --> Raft[Raft集群]
     Storage[存储层] --> FS[文件系统]
 ```
-- [ ] 元数据引擎抽象层
 - [ ] 元数据缓存层 (LRU缓存)
 - [ ] 元数据备份/恢复机制
 - [ ] SQLite持久化存储

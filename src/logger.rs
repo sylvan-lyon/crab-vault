@@ -1,7 +1,10 @@
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
+
+use crate::app_config;
 
 pub fn init() {
     tracing_subscriber::registry()
+        .with(EnvFilter::new(app_config::CONFIG.log_level()))
         .with(
             tracing_subscriber::fmt::layer()
                 .with_target(true)

@@ -1,43 +1,56 @@
+mod api;
 mod app_config;
 mod common;
 mod logger;
 mod storage;
 
-use axum::{
-    Router,
-    extract::{Path, State},
-    http::StatusCode,
-    response::IntoResponse,
-    routing::{delete, get, put},
+use axum::extract::Request;
+use base64::Engine;
+use base64::prelude::BASE64_STANDARD_NO_PAD;
+use std::{net::Ipv4Addr, time::Duration};
+use storage::DataSource;
+use tower_http::trace::DefaultOnRequest;
+use tower_http::trace::DefaultOnResponse;
+use tower_http::{
+    cors::{self, CorsLayer},
+    trace::TraceLayer,
 };
-use std::{net::Ipv4Addr, sync::Arc, time::Duration};
-use storage::FileStorage;
-use tower_http::cors::{self, CorsLayer};
 
-use crate::common::errors::*;
-
-type AppState = Arc<FileStorage>;
+use crate::{
+    api::AppState,
+    storage::{DataStorage, MetaSource, MetaStorage},
+};
 
 #[tokio::main]
 async fn main() {
     let conf_ref = &app_config::CONFIG;
     logger::init();
 
-    let storage = FileStorage::new(conf_ref.data_mnt_point()).expect("Failed to create storage");
-    let state = Arc::new(storage);
+    let data_src = DataSource::new(conf_ref.data_source()).expect("Failed to create data storage");
+    let meta_src = MetaSource::new(conf_ref.meta_source()).expect("Failed to create data storage");
+    let state = AppState::new(data_src, meta_src);
+
+    let tracing_layer = TraceLayer::new_for_http()
+        .make_span_with(|req: &Request| {
+            let method = req.method().to_string();
+            let uri = req.uri().to_string();
+            let request_id = BASE64_STANDARD_NO_PAD.encode(uuid::Uuid::new_v4()); // 使用 base64 编码的 uuid 作为请求 req_id
+            tracing::info_span!("", request_id, uri, method)
+        })
+        .on_failure(())
+        .on_request(DefaultOnRequest::new().level(tracing::Level::INFO))
+        .on_response(DefaultOnResponse::new().level(tracing::Level::INFO));
 
     let cors_layer = CorsLayer::new()
-        .allow_credentials(false)
-        .allow_headers(cors::Any)
         .allow_methods(cors::Any)
+        .allow_headers(cors::Any)
         .allow_origin(cors::Any)
-        .max_age(Duration::from_secs(3600 * 12));
+        .allow_credentials(false)
+        .max_age(Duration::from_secs(3600 * 24));
 
-    let app = Router::new()
-        .route("/{bucket}/{object}", put(upload_object))
-        .route("/{bucket}/{object}", get(get_object))
-        .route("/{bucket}/{object}", delete(delete_object))
-        .route_layer(cors_layer)
+    let app = api::build_router()
+        .layer(cors_layer)
+        .layer(tracing_layer)
         .with_state(state);
 
     let listener =
@@ -53,32 +66,4 @@ async fn main() {
     axum::serve(listener, app.into_make_service())
         .await
         .unwrap();
-}
-
-// PUT - 上传对象
-async fn upload_object(
-    State(storage): State<AppState>,
-    Path((bucket, object)): Path<(String, String)>,
-    body: bytes::Bytes,
-) -> Result<impl IntoResponse, StorageError> {
-    storage.put_object(&bucket, &object, &body).await?;
-    Ok(StatusCode::CREATED)
-}
-
-// GET - 获取对象
-async fn get_object(
-    State(storage): State<AppState>,
-    Path((bucket, object)): Path<(String, String)>,
-) -> Result<impl IntoResponse, StorageError> {
-    let data = storage.get_object(&bucket, &object).await?;
-    Ok(data)
-}
-
-// DELETE - 删除对象
-async fn delete_object(
-    State(storage): State<AppState>,
-    Path((bucket, object)): Path<(String, String)>,
-) -> Result<impl IntoResponse, StorageError> {
-    storage.delete_object(&bucket, &object).await?;
-    Ok(StatusCode::NO_CONTENT)
 }
