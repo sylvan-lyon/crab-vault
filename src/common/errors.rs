@@ -2,73 +2,121 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use std::{fmt::Display, io};
+use serde::Serialize;
+use thiserror::Error;
 
-#[derive(Debug)]
-pub enum StorageError {
-    Io(io::Error, String),
-    Serialization(serde_json::Error),
-    Deserialization(serde_json::Error),
+pub type EngineResult<T> = Result<T, EngineError>;
+
+#[derive(Debug, Serialize, Error)]
+#[serde(rename_all = "camelCase", tag = "code")]
+pub enum EngineError {
+    #[error("io error: {error} while manipulating {path}")]
+    Io {
+        #[serde(skip)]
+        error: std::io::Error,
+        path: String,
+    },
+
+    #[error("ser/de error: {error} at line{line}, column {column}")]
+    Serde {
+        error: &'static str,
+        line: usize,
+        column: usize,
+    },
+
+    #[error("bucket not found: {bucket}")]
+    BucketNotFound { bucket: String },
+
+    #[error("bucket meta not found: {bucket}")]
+    BucketMetaNotFound { bucket: String },
+
+    #[error("bucket not empty: possibly while deleting: details {bucket}")]
+    BucketNotEmpty { bucket: String },
+
+    #[error("object not found: {bucket}/{object}")]
+    ObjectNotFound { bucket: String, object: String },
+
+    #[error("object meta not found: {bucket}/{object}")]
+    ObjectMetaNotFound { bucket: String, object: String },
+
     #[allow(dead_code)]
+    #[error("some other errors: {0}")]
+    Other(String),
+
+    #[allow(dead_code)]
+    #[error("backend error: {0}")]
     BackendError(String),
 
-    #[allow(dead_code)]
-    BucketNotFound(String),
-    #[allow(dead_code)]
-    ObjectNotFound(String, String),
-
-    #[allow(dead_code)]
-    BucketAlreadyExists(String),
-    #[allow(dead_code)]
-    ObjectAlreadyExists(String, String),
-
-    #[allow(dead_code)]
+    #[error("invalid argument: {0}")]
     InvalidArgument(String),
 }
 
-impl Display for StorageError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use StorageError::*;
-        match self {
-            Io(e, path) => f.write_fmt(format_args!("io error: {e} while manipulating {path}")),
-            Serialization(e) => f.write_fmt(format_args!("serialize error: {e}")),
-            Deserialization(e) => f.write_fmt(format_args!("deserialize error: {e}")),
-            BackendError(e) => f.write_fmt(format_args!("backend error: {e}")),
-            BucketNotFound(e) => f.write_fmt(format_args!("bucket not found: {e}")),
-            ObjectNotFound(b, o) => f.write_fmt(format_args!("object not found: {b}/{o}")),
-            BucketAlreadyExists(e) => f.write_fmt(format_args!("bucket already exists: {e}")),
-            ObjectAlreadyExists(b, o) => {
-                f.write_fmt(format_args!("object already exists: {b}/{o}"))
-            }
-            InvalidArgument(e) => f.write_fmt(format_args!("invalid argument: {e}")),
+impl From<serde_json::error::Error> for EngineError {
+    fn from(value: serde_json::error::Error) -> Self {
+        use serde_json::error::Category;
+        let msg = match value.classify() {
+            Category::Io => "io",
+            Category::Syntax => "syntax",
+            Category::Data => "data",
+            Category::Eof => "eof",
+        };
+
+        EngineError::Serde {
+            error: msg,
+            line: value.line(),
+            column: value.column(),
         }
     }
 }
 
-impl core::error::Error for StorageError {}
-
-impl From<io::Error> for StorageError {
-    fn from(err: io::Error) -> Self {
-        StorageError::Io(err, "Converted from io::Error".to_string())
-    }
-}
-
-impl IntoResponse for StorageError {
+impl IntoResponse for EngineError {
     fn into_response(self) -> Response {
-        use StorageError::*;
+        use EngineError::*;
         let code = match &self {
-            Io(_, _) | Serialization(_) | Deserialization(_) | BackendError(_) => {
-                StatusCode::INTERNAL_SERVER_ERROR
+            Serde {
+                error: _,
+                line: _,
+                column: _,
             }
-            BucketNotFound(_) | ObjectNotFound(_, _) => StatusCode::NOT_FOUND,
-            BucketAlreadyExists(_) | ObjectAlreadyExists(_, _) => StatusCode::OK,
+            | Io { error: _, path: _ }
+            | BackendError(_)
+            | Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
+
+            BucketNotFound { bucket: _ }
+            | BucketMetaNotFound { bucket: _ }
+            | ObjectNotFound {
+                bucket: _,
+                object: _,
+            }
+            | ObjectMetaNotFound {
+                bucket: _,
+                object: _,
+            } => StatusCode::NOT_FOUND,
+
+            BucketNotEmpty { bucket: _ } => StatusCode::CONFLICT,
             InvalidArgument(_) => StatusCode::UNPROCESSABLE_ENTITY,
         };
 
-        let msg = self.to_string();
+        #[derive(Serialize)]
+        struct Msg {
+            #[serde(flatten)]
+            error: EngineError,
+            msg: String,
+        }
 
-        tracing::error!("{self}");
+        (
+            code,
+            axum::Json(Msg {
+                msg: self.to_string(),
+                error: self,
+            }),
+        )
+            .into_response()
+    }
+}
 
-        (code, msg).into_response()
+impl From<EngineError> for Response {
+    fn from(value: EngineError) -> Self {
+        value.into_response()
     }
 }

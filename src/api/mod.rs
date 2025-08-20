@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use axum::Router;
+use axum::{Router, routing::MethodRouter};
 
 use crate::storage::{DataSource, MetaSource};
 
-mod data;
-mod meta;
+mod handler;
+mod util;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -23,7 +23,26 @@ impl AppState {
 }
 
 pub fn build_router() -> Router<AppState> {
+    use self::handler::*;
+
+    // 路由定义，使用您设计的 RESTful 风格
+    let object_router = MethodRouter::new()
+        .put(upload_object)
+        .get(get_object)
+        .head(head_object)
+        .patch(patch_object_meta)
+        .delete(delete_object);
+
+    let bucket_router = MethodRouter::new()
+        .put(create_bucket)
+        .head(head_bucket)
+        .get(list_objects_meta)
+        .patch(patch_bucket_meta)
+        .delete(delete_bucket);
+
     Router::new()
-        .nest("/data", data::build_router())
-        .nest("/meta", meta::build_router())
+        // 暂时省略根路径的 list_buckets
+        .route("/", axum::routing::get(list_buckets_meta))
+        .route("/{bucket_name}", bucket_router)
+        .route("/{bucket_name}/{*object_name}", object_router)
 }
