@@ -39,7 +39,7 @@ pub struct ObjectMeta {
 
 // impl ObjectMeta {
 //     /// 更新老的 [`ObjectMeta`]，而不是重新创建一个新的
-//     /// 
+//     ///
 //     /// 也就是说：除了 created_at 字段，其他的全部置为 self 中的数据
 //     pub fn update(self, old: ObjectMeta) -> ObjectMeta {
 //         ObjectMeta {

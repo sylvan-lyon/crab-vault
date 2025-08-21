@@ -25,6 +25,7 @@ impl FsDataEngine {
 }
 
 /// helper function，将 [IO Error](std::io::Error) 转换为 [`StorageError`]
+#[inline(always)]
 fn io_error<P: AsRef<Path> + ?Sized>(e: std::io::Error, path: &P) -> EngineError {
     EngineError::Io {
         error: e,

@@ -3,17 +3,16 @@ mod app_config;
 mod common;
 mod logger;
 mod storage;
+mod util;
 
 use axum::extract::Request;
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD_NO_PAD;
+use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use std::{net::Ipv4Addr, time::Duration};
 use storage::DataSource;
-use tower_http::trace::DefaultOnRequest;
-use tower_http::trace::DefaultOnResponse;
 use tower_http::{
     cors::{self, CorsLayer},
-    trace::TraceLayer,
+    normalize_path::NormalizePathLayer,
+    trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer},
 };
 
 use crate::{
@@ -27,7 +26,7 @@ async fn main() {
     logger::init();
 
     let data_src = DataSource::new(conf_ref.data_source()).expect("Failed to create data storage");
-    let meta_src = MetaSource::new(conf_ref.meta_source()).expect("Failed to create data storage");
+    let meta_src = MetaSource::new(conf_ref.meta_source()).expect("Failed to create meta storage");
     let state = AppState::new(data_src, meta_src);
 
     let tracing_layer = TraceLayer::new_for_http()
@@ -41,6 +40,8 @@ async fn main() {
         .on_request(DefaultOnRequest::new().level(tracing::Level::INFO))
         .on_response(DefaultOnResponse::new().level(tracing::Level::INFO));
 
+    let normalize_path_layer = NormalizePathLayer::append_trailing_slash();
+
     let cors_layer = CorsLayer::new()
         .allow_methods(cors::Any)
         .allow_headers(cors::Any)
@@ -51,6 +52,7 @@ async fn main() {
     let app = api::build_router()
         .layer(cors_layer)
         .layer(tracing_layer)
+        .layer(normalize_path_layer)
         .with_state(state);
 
     let listener =
