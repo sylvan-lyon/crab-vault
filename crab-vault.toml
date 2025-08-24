@@ -1,4 +1,17 @@
+[server]
 port = 32767
-data_source = "./data"
-meta_source = "./meta"
-log_level = "info"
+
+[logger]
+level = "trace"
+with_ansi = true
+with_file = true
+with_target = true
+with_thread = true
+# default to not set
+# dump_path = "log"
+
+[data]
+source = "data"
+
+[meta]
+source = "meta"

@@ -9,9 +9,9 @@ use axum::{
 use serde_json::Value;
 
 use crate::{
-    AppState,
+    api::AppState,
     api::util::{BucketMetaResponse, NewObjectMetaExtractor, ObjectMetaResponse, merge_json_value},
-    common::errors::EngineResult,
+    errors::engine::EngineResult,
     storage::{BucketMeta, DataEngine, MetaEngine},
 };
 

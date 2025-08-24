@@ -4,7 +4,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::common::errors::EngineResult;
+use crate::errors::engine::EngineResult;
 
 pub type DataSource = fs::FsDataEngine;
 pub type MetaSource = fs::FsMetaEngine;

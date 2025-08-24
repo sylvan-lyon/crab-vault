@@ -82,16 +82,17 @@ impl IntoResponse for EngineError {
             | BackendError(_)
             | Other(_) => StatusCode::INTERNAL_SERVER_ERROR,
 
-            BucketNotFound { bucket: _ }
-            | BucketMetaNotFound { bucket: _ }
-            | ObjectNotFound {
+            ObjectNotFound {
                 bucket: _,
                 object: _,
             }
-            | ObjectMetaNotFound {
+            | BucketNotFound { bucket: _ } => StatusCode::NOT_FOUND,
+
+            ObjectMetaNotFound {
                 bucket: _,
                 object: _,
-            } => StatusCode::NOT_FOUND,
+            }
+            | BucketMetaNotFound { bucket: _ } => StatusCode::NOT_FOUND,
 
             BucketNotEmpty { bucket: _ } => StatusCode::CONFLICT,
             InvalidArgument(_) => StatusCode::UNPROCESSABLE_ENTITY,

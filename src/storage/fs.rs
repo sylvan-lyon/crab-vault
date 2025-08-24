@@ -6,7 +6,7 @@ use tokio::{
 };
 
 use crate::{
-    common::errors::{EngineError, EngineResult},
+    errors::engine::{EngineError, EngineResult},
     storage::{BucketMeta, DataEngine, MetaEngine, ObjectMeta},
 };
 
@@ -296,7 +296,7 @@ impl MetaEngine for FsMetaEngine {
 #[cfg(test)]
 mod data_engine_tests {
     use super::*;
-    use crate::common::errors::EngineError;
+    use crate::errors::engine::EngineError;
     use std::path::PathBuf;
 
     const TEST_BASE_DIR: &str = "./data_test";
@@ -420,7 +420,13 @@ mod data_engine_tests {
             .read_object(bucket_name, "non-existent-object")
             .await;
         assert!(result.is_err());
-        assert!(matches!(result, Err(EngineError::ObjectNotFound { bucket: _, object: _ })));
+        assert!(matches!(
+            result,
+            Err(EngineError::ObjectNotFound {
+                bucket: _,
+                object: _
+            })
+        ));
     }
 
     #[tokio::test]

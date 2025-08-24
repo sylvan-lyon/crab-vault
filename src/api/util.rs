@@ -11,7 +11,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    common::errors::{EngineError, EngineResult},
+    errors::engine::{EngineError, EngineResult},
     storage::{BucketMeta, ObjectMeta},
 };
 
