@@ -55,15 +55,13 @@ impl DataEngine for FsDataEngine {
 
         // 直接尝试删除目录
         if let Err(e) = fs::remove_dir(&path).await {
-            if e.kind() == std::io::ErrorKind::DirectoryNotEmpty
-                || e.kind() == std::io::ErrorKind::NotADirectory
-            {
-                if path.is_dir() {
+            if (e.kind() == std::io::ErrorKind::DirectoryNotEmpty
+                || e.kind() == std::io::ErrorKind::NotADirectory)
+                && path.is_dir() {
                     return Err(EngineError::BucketNotEmpty {
                         bucket: bucket_name.to_string(),
                     });
                 }
-            }
             // 对于其他类型的 IO 错误，正常地返回
             return Err(io_error(e, &path));
         }

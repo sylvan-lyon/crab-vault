@@ -337,7 +337,9 @@ mod show {
             }
         }
 
-        field_value.and_then(|val| Some(println!("{val}")));
+        if let Some(val) = field_value {
+            println!("{val}")
+        }
     }
 }
 
@@ -415,7 +417,7 @@ mod unset {
                         // as_table_link_mut 在 自身是内联表或者是表的时候返回自身的 table_like
                         // 但是在其他情况下返回 None
                         // 又由于没有 array，而且最后一个元素要么是一个表、要么是一个原子结构，所以可以直接 unwrap
-                        parrent_node.as_table_like_mut().unwrap().remove(&part);
+                        parrent_node.as_table_like_mut().unwrap().remove(part);
                     }
                     None => return,
                 }

@@ -110,9 +110,9 @@ impl From<u16> for Bitmap {
     }
 }
 
-impl Into<u16> for Bitmap {
-    fn into(self) -> u16 {
-        self.val
+impl From<Bitmap> for u16 {
+    fn from(value: Bitmap) -> u16 {
+        value.val
     }
 }
 
@@ -131,7 +131,7 @@ impl Bitmap {
     }
 
     fn get(self, idx: usize) -> bool {
-        debug_assert!((idx as usize) < std::mem::size_of::<u16>() * 8);
+        debug_assert!(idx < std::mem::size_of::<u16>() * 8);
         (self.val & (1 << idx)) != 0
     }
 

@@ -57,11 +57,10 @@ where
 
         let mut user_meta_map = serde_json::Map::new();
         for (key, value) in headers.iter() {
-            if let Some(key_str) = key.as_str().strip_prefix(USER_META_PREFIX) {
-                if let Ok(value_str) = value.to_str() {
+            if let Some(key_str) = key.as_str().strip_prefix(USER_META_PREFIX)
+                && let Ok(value_str) = value.to_str() {
                     user_meta_map.insert(key_str.to_string(), json!(value_str));
                 }
-            }
         }
 
         Ok(Self {

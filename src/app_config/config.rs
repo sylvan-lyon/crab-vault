@@ -12,6 +12,7 @@ use crate::{
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
+#[derive(Default)]
 pub struct AppConfig {
     pub(super) server: ServerConfig,
     pub(super) data: DataConfig,
@@ -141,17 +142,6 @@ pub mod logger {
 
         pub fn with_thread(&self) -> bool {
             self.with_thread
-        }
-    }
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            data: DataConfig::default(),
-            meta: MetaConfig::default(),
-            logger: LoggerConfig::default(),
         }
     }
 }

@@ -74,7 +74,7 @@ pub async fn list_buckets_meta(State(state): State<AppState>) -> EngineResult<Re
     let res = state.meta_src.list_buckets_meta().await?;
     let res = res
         .into_iter()
-        .map(|val| BucketMetaResponse::new(val))
+        .map(BucketMetaResponse::new)
         .collect::<Vec<_>>();
 
     Ok((StatusCode::OK, axum::Json(res)).into_response())

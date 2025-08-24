@@ -43,8 +43,6 @@ mod pretty {
         AnsiString, AnsiStyle, FontStyle,
     };
 
-    use std::u32;
-
     use chrono::Local;
 
     use tracing::{Level, span};
@@ -195,7 +193,7 @@ mod pretty {
                     println!(
                         "{prefix}{}",
                         self.get_style(Some(White), Some(Cyan), Some(FontStyle::new().bold(true)))
-                            .decorate(if span.name().len() > 0 {
+                            .decorate(if !span.name().is_empty() {
                                 span.name()
                             } else {
                                 "[N/A]"
@@ -231,44 +229,44 @@ mod pretty {
         }
 
         #[inline(always)]
-        fn severity_style<'a>(&self, event: &tracing::Event<'_>) -> AnsiStyle {
-            match event.metadata().level() {
-                &Level::TRACE => {
+        fn severity_style(&self, event: &tracing::Event<'_>) -> AnsiStyle {
+            match *event.metadata().level() {
+                Level::TRACE => {
                     self.get_style(Some(Magenta), None, Some(FontStyle::new().bold(true)))
                 }
-                &Level::DEBUG => {
+                Level::DEBUG => {
                     self.get_style(Some(Blue), None, Some(FontStyle::new().bold(true)))
                 }
-                &Level::INFO => self.get_style(Some(Green), None, None),
-                &Level::WARN => self.get_style(Some(Yellow), None, None),
-                &Level::ERROR => self.get_style(Some(Red), None, None),
+                Level::INFO => self.get_style(Some(Green), None, None),
+                Level::WARN => self.get_style(Some(Yellow), None, None),
+                Level::ERROR => self.get_style(Some(Red), None, None),
             }
         }
 
         #[inline(always)]
-        fn severity_label_style<'a>(&self, event: &tracing::Event<'_>) -> AnsiStyle {
-            match event.metadata().level() {
-                &Level::TRACE => self.get_style(
+        fn severity_label_style(&self, event: &tracing::Event<'_>) -> AnsiStyle {
+            match *event.metadata().level() {
+                Level::TRACE => self.get_style(
                     Some(BrightWhite),
                     Some(BrightMagenta),
                     Some(FontStyle::new().bold(true)),
                 ),
-                &Level::DEBUG => self.get_style(
+                Level::DEBUG => self.get_style(
                     Some(BrightWhite),
                     Some(BrightBlue),
                     Some(FontStyle::new().bold(true)),
                 ),
-                &Level::INFO => self.get_style(
+                Level::INFO => self.get_style(
                     Some(BrightBlack),
                     Some(BrightGreen),
                     Some(FontStyle::new().bold(true)),
                 ),
-                &Level::WARN => self.get_style(
+                Level::WARN => self.get_style(
                     Some(BrightBlack),
                     Some(BrightYellow),
                     Some(FontStyle::new().bold(true)),
                 ),
-                &Level::ERROR => self.get_style(
+                Level::ERROR => self.get_style(
                     Some(BrightBlack),
                     Some(BrightRed),
                     Some(FontStyle::new().bold(true)),
@@ -288,14 +286,14 @@ mod pretty {
             }
 
             let mut style = AnsiStyle::new();
-            if fore.is_some() {
-                style = style.with_fore(fore.unwrap());
+            if let Some(fore) = fore {
+                style = style.with_fore(fore);
             }
-            if back.is_some() {
-                style = style.with_back(back.unwrap());
+            if let Some(back) = back {
+                style = style.with_back(back);
             }
-            if font.is_some() {
-                style = style.merge_style(font.unwrap());
+            if let Some(font) = font {
+                style = style.merge_style(font);
             }
             style
         }
@@ -333,9 +331,7 @@ mod pretty {
 
     impl PrettySpanFieldsStorage {
         fn new() -> Self {
-            let mut fields = Vec::new();
-            fields.reserve(4);
-            Self { fields }
+            Self { fields: Vec::with_capacity(4) }
         }
     }
 
@@ -586,9 +582,9 @@ mod json {
             match self
                 .file
                 .clone()
-                .write(format!("{},\n", serde_json::to_string_pretty(&fields).unwrap()).as_bytes())
+                .write_all(format!("{},\n", serde_json::to_string_pretty(&fields).unwrap()).as_bytes())
             {
-                Ok(_) => return,
+                Ok(_) => (),
                 Err(e) => println!("Cannot write to dump file, details: {e}"),
             }
         }

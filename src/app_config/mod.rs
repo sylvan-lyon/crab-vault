@@ -12,8 +12,7 @@ use crate::{
 pub mod config;
 
 static CONFIG: LazyLock<config::AppConfig> = LazyLock::new(|| {
-    let conf = AppConfig::build_from_config_file().override_by_cli(Cli::parse());
-    conf
+    AppConfig::build_from_config_file().override_by_cli(Cli::parse())
 });
 
 pub fn server() -> &'static ServerConfig {
