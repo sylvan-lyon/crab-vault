@@ -6,7 +6,7 @@ use tokio::{
 };
 
 use crate::{
-    errors::engine::{EngineError, EngineResult},
+    error::engine::{EngineError, EngineResult},
     storage::{BucketMeta, DataEngine, MetaEngine, ObjectMeta},
 };
 
@@ -294,7 +294,7 @@ impl MetaEngine for FsMetaEngine {
 #[cfg(test)]
 mod data_engine_tests {
     use super::*;
-    use crate::errors::engine::EngineError;
+    use crate::error::engine::EngineError;
     use std::path::PathBuf;
 
     const TEST_BASE_DIR: &str = "./data_test";

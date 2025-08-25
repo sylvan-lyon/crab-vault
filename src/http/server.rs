@@ -9,8 +9,9 @@ use tower_http::{
 };
 
 use crate::{
-    api::{self, AppState},
-    app_config, logger,
+    app_config,
+    http::api::{self, ApiState},
+    logger,
     storage::{DataEngine, DataSource, MetaEngine, MetaSource},
 };
 
@@ -21,7 +22,7 @@ pub async fn run() {
         DataSource::new(app_config::data().source()).expect("Failed to create data storage");
     let meta_src =
         MetaSource::new(app_config::meta().source()).expect("Failed to create meta storage");
-    let state = AppState::new(data_src, meta_src);
+    let state = ApiState::new(data_src, meta_src);
 
     let tracing_layer = TraceLayer::new_for_http()
         .make_span_with(|req: &Request| {

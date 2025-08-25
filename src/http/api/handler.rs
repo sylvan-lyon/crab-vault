@@ -9,16 +9,18 @@ use axum::{
 use serde_json::Value;
 
 use crate::{
-    api::AppState,
-    api::util::{BucketMetaResponse, NewObjectMetaExtractor, ObjectMetaResponse, merge_json_value},
-    errors::engine::EngineResult,
+    error::engine::EngineResult,
+    http::api::{
+        ApiState,
+        util::{BucketMetaResponse, NewObjectMetaExtractor, ObjectMetaResponse, merge_json_value},
+    },
     storage::{BucketMeta, DataEngine, MetaEngine},
 };
 
 // --- Bucket Handlers ---
 #[debug_handler]
 pub async fn create_bucket(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(bucket_name): Path<String>,
     Json(payload): Json<Value>, // User meta for the bucket
 ) -> EngineResult<StatusCode> {
@@ -38,7 +40,7 @@ pub async fn create_bucket(
 
 #[debug_handler]
 pub async fn delete_bucket(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(bucket_name): Path<String>,
 ) -> EngineResult<StatusCode> {
     state.data_src.delete_bucket(&bucket_name).await?;
@@ -49,7 +51,7 @@ pub async fn delete_bucket(
 
 #[debug_handler]
 pub async fn head_bucket(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(bucket_name): Path<String>,
 ) -> EngineResult<Response> {
     let meta = state.meta_src.read_bucket_meta(&bucket_name).await?;
@@ -59,7 +61,7 @@ pub async fn head_bucket(
 
 #[debug_handler]
 pub async fn patch_bucket_meta(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(bucket_name): Path<String>,
     Json(payload): Json<Value>,
 ) -> EngineResult<StatusCode> {
@@ -70,7 +72,7 @@ pub async fn patch_bucket_meta(
 }
 
 #[debug_handler]
-pub async fn list_buckets_meta(State(state): State<AppState>) -> EngineResult<Response> {
+pub async fn list_buckets_meta(State(state): State<ApiState>) -> EngineResult<Response> {
     let res = state.meta_src.list_buckets_meta().await?;
     let res = res
         .into_iter()
@@ -84,7 +86,7 @@ pub async fn list_buckets_meta(State(state): State<AppState>) -> EngineResult<Re
 
 #[debug_handler]
 pub async fn upload_object(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     meta_extractor: NewObjectMetaExtractor,
     data: Bytes,
 ) -> EngineResult<StatusCode> {
@@ -109,7 +111,7 @@ pub async fn upload_object(
 
 #[debug_handler]
 pub async fn get_object(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((bucket_name, object_name)): Path<(String, String)>,
 ) -> EngineResult<ObjectMetaResponse> {
     let meta = state
@@ -126,7 +128,7 @@ pub async fn get_object(
 
 #[debug_handler]
 pub async fn head_object(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((bucket_name, object_name)): Path<(String, String)>,
 ) -> EngineResult<ObjectMetaResponse> {
     let meta = state
@@ -139,7 +141,7 @@ pub async fn head_object(
 
 #[debug_handler]
 pub async fn patch_object_meta(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((bucket_name, object_name)): Path<(String, String)>,
     Json(payload): Json<Value>,
 ) -> EngineResult<StatusCode> {
@@ -158,7 +160,7 @@ pub async fn patch_object_meta(
 
 #[debug_handler]
 pub async fn delete_object(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path((bucket_name, object_name)): Path<(String, String)>,
 ) -> EngineResult<StatusCode> {
     // 原子地删除数据和元数据
@@ -176,7 +178,7 @@ pub async fn delete_object(
 
 #[debug_handler]
 pub async fn list_objects_meta(
-    State(state): State<AppState>,
+    State(state): State<ApiState>,
     Path(bucket_name): Path<String>,
 ) -> EngineResult<Response> {
     let res = state.meta_src.list_objects_meta(&bucket_name).await?;

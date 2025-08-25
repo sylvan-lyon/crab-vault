@@ -20,7 +20,7 @@ impl CliError {
         Self { kind, message }
     }
 
-    pub fn handle_violantly(self) -> ! {
+    pub fn handle_strait_forward(self) -> ! {
         Cli::command().error(self.kind, self.message).exit()
     }
 }

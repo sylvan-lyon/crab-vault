@@ -11,10 +11,11 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    errors::engine::{EngineError, EngineResult},
+    error::engine::{EngineError, EngineResult},
     storage::{BucketMeta, ObjectMeta},
 };
 
+/// 这个前缀后面是有横线的
 const USER_META_PREFIX: &str = "x-crab-vault-meta-";
 
 /// 从请求头中提取元数据，用于创建新的 ObjectMeta。
@@ -179,7 +180,7 @@ pub fn merge_json_value(
 ) -> EngineResult<serde_json::Value> {
     use serde_json::Value;
 
-    let helper = |value: Value| match value {
+    let validate_json_value = |value: Value| match value {
         Value::Object(map) => Ok(map),
         _ => Err(EngineError::InvalidArgument(
             "Should be an object".to_string(),
@@ -187,13 +188,13 @@ pub fn merge_json_value(
     };
 
     // 首先确保新的值必须合法，否则返回一个 invalid argument 错误
-    let new = helper(new)?;
+    let new = validate_json_value(new)?;
 
     // 如果旧的值不合法，那么直接返回合法的新值
-    // 将旧值作为基底
-    let mut res = match helper(old) {
-        Ok(val) => val,
+    // 否则将旧值作为基底
+    let mut res = match validate_json_value(old) {
         Err(_) => return Ok(Value::Object(new)),
+        Ok(old) => old,
     };
 
     for (k, v) in new {

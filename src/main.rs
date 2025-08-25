@@ -1,13 +1,12 @@
 use clap::Parser;
 
-use crate::cli::{Action, Cli};
+use crate::{cli::{Action, Cli}, http::server};
 
-mod api;
 mod app_config;
 mod cli;
-mod errors;
+mod error;
+mod http;
 mod logger;
-mod server;
 mod storage;
 
 #[tokio::main]

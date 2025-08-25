@@ -27,7 +27,6 @@ pub struct FontStyle {
 }
 
 #[derive(Clone, Copy)]
-#[allow(dead_code)]
 pub enum AnsiColor {
     Black = 30,
     Red,
@@ -61,7 +60,6 @@ pub struct AnsiString<'a> {
     content: &'a str,
 }
 
-#[allow(dead_code)]
 impl<'a> AnsiString<'a> {
     pub fn new(content: &'a str) -> Self {
         Self {
@@ -158,8 +156,6 @@ impl FontStyle {
     }
 }
 
-// switches
-#[allow(dead_code)]
 impl FontStyle {
     pub fn bold(mut self, enabled: bool) -> Self {
         self.options.set(constants::BOLD, enabled);
@@ -249,7 +245,6 @@ impl AnsiStyle {
     }
 }
 
-#[allow(dead_code)]
 impl AnsiStyle {
     pub fn bold(mut self, enabled: bool) -> Self {
         self.font_style = self.font_style.bold(enabled);

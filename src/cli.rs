@@ -138,14 +138,14 @@ async fn exec(cli: Cli) {
             ConfigSubcommand::Set { field_path, value } => {
                 set::exec(config_path, field_path, value)
                     .await
-                    .unwrap_or_else(|e| e.handle_violantly())
+                    .unwrap_or_else(|e| e.handle_strait_forward())
             }
             ConfigSubcommand::Show { field_path } => show::exec(config_path, field_path)
                 .await
-                .unwrap_or_else(|e| e.handle_violantly()),
+                .unwrap_or_else(|e| e.handle_strait_forward()),
             ConfigSubcommand::Unset { field_path } => unset::exec(config_path, field_path)
                 .await
-                .unwrap_or_else(|e| e.handle_violantly()),
+                .unwrap_or_else(|e| e.handle_strait_forward()),
         }
     } else {
         unreachable!()
@@ -160,7 +160,7 @@ mod set {
 
     use crate::{
         app_config::config::AppConfig,
-        errors::cli::{CliError, CliResult},
+        error::cli::{CliError, CliResult},
     };
 
     pub(super) async fn exec(
@@ -176,7 +176,7 @@ mod set {
             match kind {
                 Item::Value(kind) => {
                     let converted_value =
-                        parse_value(value, kind).unwrap_or_else(|e| e.handle_violantly());
+                        parse_value(value, kind).unwrap_or_else(|e| e.handle_strait_forward());
 
                     // 文件存在就读取文件，文件不存在就创建一个新的
                     let config_content = if Path::new(&config_path).exists() {
@@ -268,7 +268,7 @@ mod show {
     use clap::{CommandFactory, error::ErrorKind};
     use toml_edit::Document;
 
-    use crate::{app_config::config::AppConfig, cli::Cli, errors::cli::CliResult};
+    use crate::{app_config::config::AppConfig, cli::Cli, error::cli::CliResult};
 
     pub(super) async fn exec(config_path: String, field_path: Option<String>) -> CliResult<()> {
         let map = AppConfig::get_valid_paths();
@@ -351,7 +351,7 @@ mod unset {
 
     use crate::{
         app_config::config::AppConfig,
-        errors::cli::{CliError, CliResult},
+        error::cli::{CliError, CliResult},
     };
 
     pub(super) async fn exec(config_path: String, field_path: String) -> CliResult<()> {

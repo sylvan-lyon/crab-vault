@@ -2,7 +2,7 @@
 name = "crab-vault"
 version = "0.2.2"
 edition = "2024"
-description = "An object storage service wirtten in rust."
+description = "An object storage service written in rust."
 authors = ["Sylvan Lyon <sylvanlyon@gmail.com>"]
 
 [dependencies]
@@ -12,6 +12,7 @@ bytes = { version = "1.10", features = ["serde"] }
 chrono = { version = "0.4.41", features = ["serde"] }
 clap = { version = "4.5.45", features = ["derive"] }
 config = "0.15.14"
+jsonwebtoken = "9.3.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.142"
 sha2 = "0.10.9"
@@ -19,7 +20,7 @@ thiserror = "2.0.16"
 tokio = { version = "1.47", features = ["full"] }
 toml_edit = "0.23.4"
 tower = { version = "0.5", features = ["tokio"] }
-tower-http = { version = "0.6", features = ["trace", "timeout", "cors", "limit", "normalize-path", "auth", "fs"] }
+tower-http = { version = "0.6", features = ["trace", "timeout", "cors", "limit", "normalize-path"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.18", features = ["v4"] }
