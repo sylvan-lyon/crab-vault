@@ -6,14 +6,18 @@ use std::{
 };
 
 use axum::{
-    http::{HeaderMap, header::AUTHORIZATION},
+    http::{
+        HeaderMap,
+        header::{AUTHORIZATION, CONTENT_LENGTH, CONTENT_TYPE},
+    },
     response::{IntoResponse, Response},
 };
 use tower::{Layer, Service};
 
 use crate::{
-    error::auth::AuthError,
-    http::auth::{Jwt, JwtConfig, Method, Permission},
+    app_config::server::JwtConfig,
+    error::{api::ApiError, auth::AuthError},
+    http::auth::{HttpMethod, Jwt, Permission},
 };
 
 #[derive(Clone)]
@@ -61,7 +65,7 @@ where
                         Err(_) => unreachable!(),
                     }
                 }
-                Err(e) => Ok(e.into_response()),
+                Err(e) => Ok(e),
             }
         })
     }
@@ -72,8 +76,8 @@ pub struct AuthLayer(Arc<JwtConfig>);
 
 impl AuthLayer {
     /// 此函数将在堆上创建一个 [`JwtConfig`] 结构作为这个中间件的配置
-    pub fn new(config: JwtConfig) -> Self {
-        Self(Arc::new(config))
+    pub fn new(config: Arc<JwtConfig>) -> Self {
+        Self(config.clone())
     }
 }
 
@@ -91,10 +95,10 @@ impl<Inner> Layer<Inner> for AuthLayer {
 /// 提取并验证JWT令牌
 async fn extract_and_validate_token(
     headers: &HeaderMap,
-    method: Method,
+    method: HttpMethod,
     path: &str,
     jwt_config: &JwtConfig,
-) -> Result<Permission, AuthError> {
+) -> Result<Permission, Response> {
     // 1. 提取Authorization头
     let auth_header = headers
         .get(AUTHORIZATION)
@@ -110,29 +114,31 @@ async fn extract_and_validate_token(
     // 3. 解码并验证JWT
     let jwt: Jwt<Permission> = Jwt::decode(token, jwt_config)?;
 
-    // 4. 验证签发者
-    if jwt.iss != "brain-overflow" {
-        return Err(AuthError::InvalidIssuer);
+    // 4. 检查 content-length，如果没过这个要求，那更是演都不演了
+    let content_length = headers
+        .get(CONTENT_LENGTH)
+        .ok_or(ApiError::MissingContentLength)?
+        .to_str()
+        .map_err(|_| ApiError::EncodingError)?
+        .parse()
+        .map_err(|_| ApiError::ValueParsingError)?;
+    if !jwt.payload.check_size(content_length) {
+        return Err(ApiError::BodyTooLarge.into());
     }
 
-    // 5. 检验受众
-    if jwt.aud != "crab-vault" {
-        return Err(AuthError::InvalidAudience);
-    }
-
-    // 6. 检查令牌是否已过期
-    if chrono::Utc::now().timestamp() > jwt.exp {
-        return Err(AuthError::TokenExpired);
-    }
-
-    // 7. 检查令牌是否尚未生效
-    if chrono::Utc::now().timestamp() < jwt.nbf {
-        return Err(AuthError::TokenNotYetValid);
-    }
-
-    // 8. 检查资源路径匹配和请求方法
+    // 5. 检查资源路径匹配和请求方法
     if !jwt.payload.can_perform(method) || !jwt.payload.can_access(path) {
-        return Err(AuthError::InsufficientPermissions);
+        return Err(AuthError::InsufficientPermissions.into());
+    }
+
+    // 6. 检查 content-type
+    let content_type = headers
+        .get(CONTENT_TYPE)
+        .ok_or(ApiError::MissingContentType)?
+        .to_str()
+        .map_err(|_| ApiError::InvalidContentType)?;
+    if !jwt.payload.check_content_type(content_type) {
+        return Err(ApiError::InvalidContentType.into());
     }
 
     Ok(jwt.payload)

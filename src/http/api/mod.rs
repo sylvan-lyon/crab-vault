@@ -3,7 +3,8 @@ use std::sync::Arc;
 use axum::{Router, routing::MethodRouter};
 
 use crate::{
-    http::{auth::JwtConfig, middleware::auth::AuthLayer},
+    app_config,
+    http::middleware::auth::AuthLayer,
     storage::{DataSource, MetaSource},
 };
 
@@ -28,7 +29,6 @@ impl ApiState {
 pub fn build_router() -> Router<ApiState> {
     use self::handler::*;
 
-    // 路由定义，使用您设计的 RESTful 风格
     let object_router = MethodRouter::new()
         .put(upload_object)
         .get(get_object)
@@ -43,16 +43,11 @@ pub fn build_router() -> Router<ApiState> {
         .get(list_objects_meta)
         .head(head_bucket);
 
+    let jwt_config = Arc::new(app_config::server().auth().jwt_config().clone());
+
     Router::new()
         .route("/", axum::routing::get(list_buckets_meta))
         .route("/{bucket_name}", bucket_router)
         .route("/{bucket_name}/{*object_name}", object_router)
-        .layer(AuthLayer::new(
-            JwtConfig::new()
-                .decode_key_from_hmac(&[1u8])
-                .encode_key_from_hmac(&[1u8])
-                .with_algorithm(jsonwebtoken::Algorithm::HS256)
-                .with_validation(jsonwebtoken::Validation::default())
-                .build(),
-        ))
+        .layer(AuthLayer::new(jwt_config))
 }

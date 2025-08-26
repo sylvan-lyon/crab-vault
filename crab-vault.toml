@@ -1,14 +1,29 @@
 [server]
 port = 32767
 
+[[server.auth.path_rules]]
+public_methods = ["ALL"]
+pattern = "*"
+
+[server.auth.jwt_config]
+encoding_key = ""
+decoding_key = ""
+encode_algorithm = "HS256"
+
+[server.auth.jwt_config.validation]
+aud = ["crab-vault"]
+validate_aud = true
+# 其他的配置字段
+
 [logger]
 level = "trace"
 with_ansi = true
 with_file = true
 with_target = true
 with_thread = true
-# default to not set
+# default to unset
 # dump_path = "log"
+# dump_level = "info"
 
 [data]
 source = "data"

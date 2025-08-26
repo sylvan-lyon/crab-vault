@@ -26,7 +26,7 @@ pub enum AuthError {
     #[error("jwt error: invalid signature")]
     InvalidSignature,
 
-    #[error("jwt error: invalid issuer")]
+    #[error("jwt error: untrusted issuer")]
     InvalidIssuer,
 
     #[error("jwt error: invalid audience")]
@@ -44,9 +44,8 @@ pub enum AuthError {
     #[error("jwt error: token has been revoked")]
     TokenRevoked,
 
-    #[allow(dead_code)]
-    #[error("internal server error during authentication")]
-    InternalError,
+    #[error("internal server error during authentication, details: {0}")]
+    InternalError(#[serde(skip)] String),
 }
 
 impl From<jsonwebtoken::errors::Error> for AuthError {
@@ -60,7 +59,21 @@ impl From<jsonwebtoken::errors::Error> for AuthError {
             InvalidAudience => AuthError::InvalidAudience,
             InvalidSubject => AuthError::InvalidSubject,
             MissingRequiredClaim(claim) => AuthError::MissingClaim(claim),
-            _ => AuthError::TokenInvalid,
+            ImmatureSignature => AuthError::TokenNotYetValid,
+            InvalidToken => AuthError::TokenInvalid,
+
+            InvalidEcdsaKey => AuthError::InternalError("the secret given is not a valid ECDSA key".into()),
+            InvalidRsaKey(_) => AuthError::InternalError("the secret given is not a valid RSA key".into()),
+            RsaFailedSigning => AuthError::InternalError("could not sign with the given key".into()),
+            InvalidAlgorithmName => AuthError::InternalError("cannot parse algorithm from str".into()),
+            InvalidKeyFormat => AuthError::InternalError("a key is provided with an invalid format".into()),
+            InvalidAlgorithm => AuthError::InternalError("the algorithm in the header doesn't match the one passed to decode or the encoding/decoding key used doesn't match the alg requested".to_string()),
+            MissingAlgorithm => AuthError::InternalError("the Validation struct does not contain at least 1 algorithm".into()),
+            Base64(e) => AuthError::InternalError(format!("An error happened when decoding some base64 text: {e}")),
+            Json(e) => AuthError::InternalError(format!("An error happened while serializing/deserializing JSON: {e}")),
+            Utf8(e) => AuthError::InternalError(format!("Some of the text was invalid UTF-8: {e}")),
+            Crypto(e) => AuthError::InternalError(format!("Something unspecified went wrong with crypto: {e}")),
+            _ => todo!()
         }
     }
 }
@@ -82,7 +95,7 @@ impl IntoResponse for AuthError {
 
             AuthError::InsufficientPermissions => StatusCode::FORBIDDEN,
 
-            AuthError::InternalError => StatusCode::INTERNAL_SERVER_ERROR,
+            AuthError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
         (status_code, axum::Json(self)).into_response()

@@ -9,7 +9,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/crab-vault.exe",
-            "args": ["config", "show"],
+            "args": ["jwt"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
