@@ -3,13 +3,13 @@ use std::sync::Arc;
 use axum::{Router, routing::MethodRouter};
 
 use crate::{
-    app_config,
     http::middleware::auth::AuthLayer,
     storage::{DataSource, MetaSource},
 };
 
 mod handler;
 mod util;
+mod response;
 
 #[derive(Clone)]
 pub struct ApiState {
@@ -26,7 +26,7 @@ impl ApiState {
     }
 }
 
-pub fn build_router() -> Router<ApiState> {
+pub async fn build_router() -> Router<ApiState> {
     use self::handler::*;
 
     let object_router = MethodRouter::new()
@@ -43,11 +43,9 @@ pub fn build_router() -> Router<ApiState> {
         .get(list_objects_meta)
         .head(head_bucket);
 
-    let jwt_config = Arc::new(app_config::server().auth().jwt_config().clone());
-
     Router::new()
         .route("/", axum::routing::get(list_buckets_meta))
         .route("/{bucket_name}", bucket_router)
         .route("/{bucket_name}/{*object_name}", object_router)
-        .layer(AuthLayer::new(jwt_config))
+        .layer(AuthLayer::new())
 }

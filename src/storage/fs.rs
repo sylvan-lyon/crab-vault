@@ -57,11 +57,12 @@ impl DataEngine for FsDataEngine {
         if let Err(e) = fs::remove_dir(&path).await {
             if (e.kind() == std::io::ErrorKind::DirectoryNotEmpty
                 || e.kind() == std::io::ErrorKind::NotADirectory)
-                && path.is_dir() {
-                    return Err(EngineError::BucketNotEmpty {
-                        bucket: bucket_name.to_string(),
-                    });
-                }
+                && path.is_dir()
+            {
+                return Err(EngineError::BucketNotEmpty {
+                    bucket: bucket_name.to_string(),
+                });
+            }
             // 对于其他类型的 IO 错误，正常地返回
             return Err(io_error(e, &path));
         }
@@ -197,54 +198,6 @@ impl MetaEngine for FsMetaEngine {
         Ok(Self { base_dir })
     }
 
-    async fn create_bucket_meta(&self, meta: &BucketMeta) -> EngineResult<()> {
-        let path = self.bucket_meta_path(&meta.name);
-
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .await
-                .map_err(|e| io_error(e, parent))?;
-        }
-
-        let json = serde_json::to_string_pretty(meta)?;
-        fs::write(&path, json).await.map_err(|e| io_error(e, &path))
-    }
-
-    async fn read_bucket_meta(&self, name: &str) -> EngineResult<BucketMeta> {
-        let path = self.bucket_meta_path(name);
-        match fs::read_to_string(&path).await {
-            Ok(data) => Ok(serde_json::from_str(&data)?),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                Err(EngineError::BucketMetaNotFound {
-                    bucket: name.to_string(),
-                })
-            }
-            Err(e) => Err(io_error(e, &path)),
-        }
-    }
-
-    async fn delete_bucket_meta(&self, name: &str) -> EngineResult<()> {
-        let path = self.bucket_meta_path(name);
-        match fs::remove_file(&path).await {
-            Ok(_) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(io_error(e, &path)),
-        }?;
-
-        match fs::remove_dir(self.objects_dir_path(name)).await {
-            Ok(_) => Ok(()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(io_error(e, &path)),
-        }?;
-
-        Ok(())
-    }
-
-    async fn list_buckets_meta(&self) -> EngineResult<Vec<BucketMeta>> {
-        let dir_path = self.buckets_dir_path();
-        list_meta_from_dir(&dir_path).await
-    }
-
     async fn create_object_meta(&self, meta: &ObjectMeta) -> EngineResult<()> {
         let path = self.object_meta_path(&meta.bucket_name, &meta.object_name);
 
@@ -264,6 +217,7 @@ impl MetaEngine for FsMetaEngine {
         object_name: &str,
     ) -> EngineResult<ObjectMeta> {
         let path = self.object_meta_path(bucket_name, object_name);
+
         match fs::read_to_string(&path).await {
             Ok(data) => Ok(serde_json::from_str(&data)?),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -278,6 +232,7 @@ impl MetaEngine for FsMetaEngine {
 
     async fn delete_object_meta(&self, bucket_name: &str, object_name: &str) -> EngineResult<()> {
         let path = self.object_meta_path(bucket_name, object_name);
+
         match fs::remove_file(&path).await {
             Ok(_) => Ok(()),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -287,6 +242,97 @@ impl MetaEngine for FsMetaEngine {
 
     async fn list_objects_meta(&self, bucket_name: &str) -> EngineResult<Vec<ObjectMeta>> {
         let dir_path = self.objects_dir_path(bucket_name);
+        list_meta_from_dir(&dir_path).await
+    }
+
+    async fn touch_object(&self, bucket_name: &str, object_name: &str) -> EngineResult<()> {
+        let path = self.object_meta_path(bucket_name, object_name);
+
+        match fs::read_to_string(&path).await {
+            Ok(data) => {
+                let mut meta: ObjectMeta = serde_json::from_str(&data)?;
+                meta.updated_at = chrono::Utc::now();
+                fs::write(&path, serde_json::to_string_pretty(&meta)?)
+                    .await
+                    .map_err(|e| io_error(e, &path))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Err(EngineError::ObjectMetaNotFound {
+                    bucket: bucket_name.to_string(),
+                    object: object_name.to_string(),
+                })
+            }
+            Err(e) => Err(io_error(e, &path)),
+        }
+    }
+
+    async fn create_bucket_meta(&self, meta: &BucketMeta) -> EngineResult<()> {
+        let path = self.bucket_meta_path(&meta.name);
+
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .await
+                .map_err(|e| io_error(e, parent))?;
+        }
+
+        let json = serde_json::to_string_pretty(meta)?;
+        fs::write(&path, json).await.map_err(|e| io_error(e, &path))
+    }
+
+    async fn read_bucket_meta(&self, name: &str) -> EngineResult<BucketMeta> {
+        let path = self.bucket_meta_path(name);
+
+        match fs::read_to_string(&path).await {
+            Ok(data) => Ok(serde_json::from_str(&data)?),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Err(EngineError::BucketMetaNotFound {
+                    bucket: name.to_string(),
+                })
+            }
+            Err(e) => Err(io_error(e, &path)),
+        }
+    }
+
+    async fn delete_bucket_meta(&self, name: &str) -> EngineResult<()> {
+        let path = self.bucket_meta_path(name);
+
+        match fs::remove_file(&path).await {
+            Ok(_) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(io_error(e, &path)),
+        }?;
+
+        match fs::remove_dir(self.objects_dir_path(name)).await {
+            Ok(_) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(io_error(e, &path)),
+        }?;
+
+        Ok(())
+    }
+
+    async fn touch_bucket(&self, bucket_name: &str) -> EngineResult<()> {
+        let path = self.bucket_meta_path(bucket_name);
+
+        match fs::read_to_string(&path).await {
+            Ok(data) => {
+                let mut meta: BucketMeta = serde_json::from_str(&data)?;
+                meta.updated_at = chrono::Utc::now();
+                fs::write(&path, serde_json::to_string_pretty(&meta)?)
+                    .await
+                    .map_err(|e| io_error(e, &path))
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                Err(EngineError::BucketMetaNotFound {
+                    bucket: bucket_name.to_string(),
+                })
+            }
+            Err(e) => Err(io_error(e, &path)),
+        }
+    }
+
+    async fn list_buckets_meta(&self) -> EngineResult<Vec<BucketMeta>> {
+        let dir_path = self.buckets_dir_path();
         list_meta_from_dir(&dir_path).await
     }
 }
@@ -387,7 +433,6 @@ mod data_engine_tests {
             Err(EngineError::BucketNotEmpty { bucket: _ })
         ));
 
-        // Verificar se o bucket ainda existe
         let bucket_path = _base_dir.join(bucket_name);
         assert!(bucket_path.exists());
     }
@@ -433,7 +478,6 @@ mod data_engine_tests {
         let bucket_name = "bucket";
         storage.create_bucket(bucket_name).await.unwrap();
 
-        // Tentar deletar um objeto que não existe deve ser bem-sucedido (idempotente)
         let result = storage
             .delete_object(bucket_name, "non-existent-object")
             .await;
@@ -454,17 +498,14 @@ mod data_engine_tests {
             .await
             .unwrap();
 
-        // Verificar o conteúdo inicial
         let read_data1 = storage.read_object(bucket_name, object_name).await.unwrap();
         assert_eq!(read_data1, initial_data);
 
-        // Sobrescrever o objeto
         storage
             .create_object(bucket_name, object_name, new_data)
             .await
             .unwrap();
 
-        // Verificar o novo conteúdo
         let read_data2 = storage.read_object(bucket_name, object_name).await.unwrap();
         assert_eq!(read_data2, new_data);
     }
@@ -473,7 +514,7 @@ mod data_engine_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{BucketMeta, ObjectMeta}; // 确保路径正确
+    use crate::storage::{BucketMeta, ObjectMeta};
     use std::path::PathBuf;
 
     const TEST_META_BASE_DIR: &str = "./meta_test";
@@ -586,26 +627,21 @@ mod tests {
             ..ObjectMeta::default()
         };
 
-        // 1. Put object meta
         storage.create_object_meta(&object_meta1).await.unwrap();
         storage.create_object_meta(&object_meta2).await.unwrap();
 
-        // Verify file structure
         let expected_path = base_dir.join("objects").join(bucket_name).join("obj1.json");
         assert!(expected_path.exists());
 
-        // 2. Get object meta
         let fetched_obj1 = storage.read_object_meta(bucket_name, "obj1").await.unwrap();
         assert_eq!(fetched_obj1, object_meta1);
 
-        // 3. List objects meta
         let mut objects = storage.list_objects_meta(bucket_name).await.unwrap();
         objects.sort_by(|a, b| a.object_name.cmp(&b.object_name));
         assert_eq!(objects.len(), 2);
         assert_eq!(objects[0], object_meta1);
         assert_eq!(objects[1], object_meta2);
 
-        // 4. Delete one object meta
         storage
             .delete_object_meta(bucket_name, "obj1")
             .await

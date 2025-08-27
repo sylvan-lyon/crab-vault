@@ -37,18 +37,6 @@ pub struct ObjectMeta {
     pub user_meta: serde_json::Value,
 }
 
-// impl ObjectMeta {
-//     /// 更新老的 [`ObjectMeta`]，而不是重新创建一个新的
-//     ///
-//     /// 也就是说：除了 created_at 字段，其他的全部置为 self 中的数据
-//     pub fn update(self, old: ObjectMeta) -> ObjectMeta {
-//         ObjectMeta {
-//             created_at: old.created_at,
-//             ..self
-//         }
-//     }
-// }
-
 /// 此 trait 定义了 object 从何处来
 pub trait DataEngine: Sized {
     /// 创建一个新的实现了 [`DataEngine`] 的实例
@@ -93,21 +81,26 @@ pub trait MetaEngine: Sized {
     /// 列出所有的 Bucket 的元数据
     async fn list_buckets_meta(&self) -> EngineResult<Vec<BucketMeta>>;
 
+    /// 更新一个 object 的 last_update 字段
+    async fn touch_object(&self, bucket_name: &str, object_name: &str) -> EngineResult<()>;
+    
     // --- Object Operations ---
-
+    
     /// 存储（或更新）一个 Object 的元数据
     async fn create_object_meta(&self, meta: &ObjectMeta) -> EngineResult<()>;
-
+    
     /// 获取指定 Object 的元数据
     async fn read_object_meta(
         &self,
         bucket_name: &str,
         object_name: &str,
     ) -> EngineResult<ObjectMeta>;
-
+    
     /// 删除一个 Object 的元数据
     async fn delete_object_meta(&self, bucket_name: &str, object_name: &str) -> EngineResult<()>;
-
+    
     /// 列出指定 Bucket 内的所有 Object 元数据
     async fn list_objects_meta(&self, bucket_name: &str) -> EngineResult<Vec<ObjectMeta>>;
+    /// 更新一个 object 的 last_update 字段
+    async fn touch_bucket(&self, bucket_name: &str) -> EngineResult<()>;
 }

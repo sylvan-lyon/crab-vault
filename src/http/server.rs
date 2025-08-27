@@ -1,7 +1,7 @@
 use std::{net::Ipv4Addr, time::Duration};
 
 use axum::extract::Request;
-use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
+use base64::{prelude::BASE64_STANDARD, Engine};
 use tower_http::{
     cors::{self, CorsLayer},
     normalize_path::NormalizePathLayer,
@@ -28,7 +28,7 @@ pub async fn run() {
         .make_span_with(|req: &Request| {
             let method = req.method().to_string();
             let uri = req.uri().to_string();
-            let req_id = BASE64_STANDARD_NO_PAD.encode(uuid::Uuid::new_v4()); // 使用 base64 编码的 uuid 作为请求 req_id
+            let req_id = BASE64_STANDARD.encode(uuid::Uuid::new_v4()); // 使用 base64 编码的 uuid 作为请求 req_id
             tracing::info_span!("[request]", req_id, method, uri)
         })
         .on_failure(())
@@ -45,6 +45,7 @@ pub async fn run() {
         .max_age(Duration::from_secs(3600 * 24));
 
     let app = api::build_router()
+        .await
         .layer(cors_layer)
         .layer(tracing_layer)
         .layer(normalize_path_layer)

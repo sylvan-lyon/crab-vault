@@ -10,6 +10,7 @@ use crate::{
     http::auth::Permission,
 };
 
+#[allow(dead_code)]
 pub struct PermissionExtractor(pub Permission);
 
 impl<S> FromRequestParts<S> for PermissionExtractor
@@ -41,6 +42,7 @@ where
             Some(p) => p,
             // 如果没有找到权限，这是一个服务器内部错误。
             // 意味着这个提取器被用在了没有被 AuthMiddleware 保护的路由上。
+            // 因为前面的 AuthMiddleware 被设计为如果设置某一个 API 不受保护，那么将返回一个最高级别的 Permission
             None => unreachable!(),
         }
         .clone();
@@ -48,7 +50,6 @@ where
         let body_bytes = match Bytes::from_request(req, state).await {
             Ok(bytes) => bytes,
             Err(e) => {
-                // 将 Body-reading 错误转换为我们的 API 错误
                 let api_error: ApiError = e.into();
                 return Err(api_error.into_response());
             }

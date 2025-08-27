@@ -5,7 +5,7 @@ use axum::{
 use serde::Serialize;
 
 #[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", tag = "code")]
 pub enum ApiError {
     // 客户端错误
     MissingContentType,
@@ -13,6 +13,8 @@ pub enum ApiError {
 
     MissingContentLength,
     BodyTooLarge,
+
+    UriInvalid,
 
     EncodingError,
     ValueParsingError,
@@ -28,6 +30,8 @@ impl ApiError {
             | ApiError::BodyTooLarge
             | ApiError::EncodingError
             | ApiError::ValueParsingError => StatusCode::UNPROCESSABLE_ENTITY,
+
+            ApiError::UriInvalid => StatusCode::NOT_FOUND,
         }
     }
 }
@@ -41,7 +45,7 @@ impl IntoResponse for ApiError {
 impl From<ApiError> for Response {
     #[inline(always)]
     fn from(value: ApiError) -> Self {
-        value.into()
+        value.into_response()
     }
 }
 

@@ -1,6 +1,7 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, hash::Hash};
 
-use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
+use base64::{prelude::BASE64_STANDARD, Engine};
+use glob::Pattern;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
@@ -16,22 +17,26 @@ pub struct ServerConfig {
 #[derive(Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields, default)]
 pub struct AuthConfig {
+    /// 这里使用 HashSet 来保证如果同一个路径下有多种公开方式时，采取最后指定的公开请求方法而非并集
     #[serde(default)]
-    pub path_rules: Vec<PathRule>,
+    pub path_rules: HashSet<PathRule>,
 
+    /// jwt 鉴权相关设置
     #[serde(default, skip_serializing)]
     pub jwt_config: JwtConfig,
 }
 
 #[derive(Default, Serialize, Deserialize)]
 pub struct PathRule {
+    /// 路径的通配符，UNIX shell 通配符
     pub pattern: String,
 
+    /// 无需 token 即可访问的那些方法
     #[serde(default)]
     pub public_methods: HashSet<HttpMethod>,
 }
 
-/// JWT 编解码的设置，这个是在项目中供中间件使用的
+/// JWT 编解码的设置，这个是供中间件使用的，不会从配置文件中直接读取，而是使用 JwtConfigBuilder 构建
 #[derive(Clone, Deserialize)]
 #[serde(from = "JwtConfigBuilder", deny_unknown_fields)]
 pub struct JwtConfig {
@@ -41,7 +46,7 @@ pub struct JwtConfig {
     pub validation: Validation,
 }
 
-/// 这个就是配置文件和运行时的桥接
+/// 这个就是配置文件的直接映射
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct JwtConfigBuilder {
@@ -82,18 +87,12 @@ impl ServerConfig {
 }
 
 impl AuthConfig {
-    pub fn path_rule(&self) -> &[PathRule] {
+    pub fn path_rules(&self) -> &HashSet<PathRule> {
         &self.path_rules
     }
 
     pub fn jwt_config(&self) -> &JwtConfig {
         &self.jwt_config
-    }
-}
-
-impl From<JwtConfigBuilder> for JwtConfig {
-    fn from(value: JwtConfigBuilder) -> Self {
-        value.build()
     }
 }
 
@@ -103,6 +102,41 @@ impl Default for ServerConfig {
             port: 32767,
             auth: AuthConfig::default(),
         }
+    }
+}
+
+impl PartialEq for PathRule {
+    fn eq(&self, other: &Self) -> bool {
+        self.pattern == other.pattern
+    }
+}
+
+impl Eq for PathRule {}
+
+impl Hash for PathRule {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.pattern.hash(state);
+    }
+}
+
+impl PathRule {
+    pub fn compile(&self) -> Option<(Pattern, HashSet<HttpMethod>)> {
+        match Pattern::new(&self.pattern) {
+            Ok(val) => Some((val, self.public_methods.iter().copied().collect())),
+            Err(e) => {
+                tracing::error!(
+                    "the PATH `{}` of path rules are not written in valid UNIX shell format, details: {e}",
+                    self.pattern
+                );
+                None
+            }
+        }
+    }
+}
+
+impl From<JwtConfigBuilder> for JwtConfig {
+    fn from(value: JwtConfigBuilder) -> Self {
+        value.build()
     }
 }
 
@@ -153,9 +187,8 @@ impl JwtConfigBuilder {
     }
 
     pub fn build(self) -> JwtConfig {
-
         let decode_base64 = |secret, proc| {
-            BASE64_STANDARD_NO_PAD
+            BASE64_STANDARD
                 .decode(secret)
                 .map_err(|e| CliError::from(e).with_source(proc).handle_strait_forward())
                 .unwrap()
@@ -182,8 +215,7 @@ impl JwtConfigBuilder {
 
 impl ValidationConfig {
     pub fn new(alg: Algorithm) -> Self {
-        let mut required_claims = Vec::with_capacity(1);
-        required_claims.push("exp".to_owned());
+        let required_claims =vec!["exp".into()];
 
         Self {
             required_spec_claims: required_claims,

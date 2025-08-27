@@ -2,8 +2,13 @@
 port = 32767
 
 [[server.auth.path_rules]]
-public_methods = ["ALL"]
-pattern = "*"
+public_methods = ["GET", "DELETE"]
+pattern = "*/*.json"
+
+
+[[server.auth.path_rules]]
+public_methods = ["GET", "DELETE"]
+pattern = "*/*.json"
 
 [server.auth.jwt_config]
 encoding_key = ""

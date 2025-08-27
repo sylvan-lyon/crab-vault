@@ -59,7 +59,7 @@ pub enum HttpMethod {
 }
 
 /// 操作条件限制
-#[derive(Serialize, Deserialize, Default, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Conditions {
     /// 最大对象大小 (字节)
@@ -71,11 +71,6 @@ pub struct Conditions {
     ///
     /// 对于上传操作有效，支持 MIME 类型通配符
     pub allowed_content_types: Vec<String>,
-
-    /// IP 地址限制，现在先不用
-    ///
-    /// 允许的客户端 IP 地址或 CIDR 范围
-    pub allowed_ips: Vec<String>,
 }
 
 impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
@@ -89,6 +84,17 @@ impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
 }
 
 impl Permission {
+    pub fn new_root() -> Self {
+        Self {
+            operations: vec![HttpMethod::All],
+            resource_pattern: "*".to_string(),
+            conditions: Conditions {
+                max_size: None,
+                allowed_content_types: vec!["*".to_string()],
+            },
+        }
+    }
+
     /// 如果能够执行某一个 [`Method`] ，返回 `true`，否则返回 `false`
     pub fn can_perform(&self, method: HttpMethod) -> bool {
         self.operations.contains(&HttpMethod::All) || self.operations.contains(&method)
@@ -112,26 +118,31 @@ impl Permission {
     pub fn check_content_type(&self, content_type: &str) -> bool {
         self.conditions.check_content_type(content_type)
     }
-
-    /// 上传资源的 IP 符合 [`Permission`] 的 `allowed_ips`，返回 `true`，否则返回 `false`
-    pub fn check_ip(&self, ip: &str) -> bool {
-        self.conditions.check_ip(ip)
-    }
 }
 
 impl From<&axum::http::Method> for HttpMethod {
     fn from(value: &axum::http::Method) -> Self {
-        match value {
-            &axum::http::Method::GET => Self::Get,
-            &axum::http::Method::POST => Self::Post,
-            &axum::http::Method::PUT => Self::Put,
-            &axum::http::Method::PATCH => Self::Patch,
-            &axum::http::Method::DELETE => Self::Delete,
-            &axum::http::Method::HEAD => Self::Head,
-            &axum::http::Method::OPTIONS => Self::Options,
-            &axum::http::Method::TRACE => Self::Trace,
-            &axum::http::Method::CONNECT => Self::Connect,
+        match *value {
+            axum::http::Method::GET => Self::Get,
+            axum::http::Method::POST => Self::Post,
+            axum::http::Method::PUT => Self::Put,
+            axum::http::Method::PATCH => Self::Patch,
+            axum::http::Method::DELETE => Self::Delete,
+            axum::http::Method::HEAD => Self::Head,
+            axum::http::Method::OPTIONS => Self::Options,
+            axum::http::Method::TRACE => Self::Trace,
+            axum::http::Method::CONNECT => Self::Connect,
             _ => Self::Other,
+        }
+    }
+}
+
+impl Default for Conditions {
+    /// 默认情况下，不允许任何的请求报文体的大小超过 0 字节，或者说，默认不允许上传内容
+    fn default() -> Self {
+        Self {
+            max_size: Some(0),
+            allowed_content_types: vec![],
         }
     }
 }
@@ -150,10 +161,7 @@ impl Conditions {
                 return true;
             }
         }
-        return false;
-    }
 
-    pub fn check_ip(&self, _ip: &str) -> bool {
-        true
+        false
     }
 }

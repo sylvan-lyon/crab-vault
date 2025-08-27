@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     convert::Infallible,
     pin::Pin,
     sync::Arc,
@@ -12,10 +13,12 @@ use axum::{
     },
     response::{IntoResponse, Response},
 };
+use glob::Pattern;
+use tokio::sync::OnceCell;
 use tower::{Layer, Service};
 
 use crate::{
-    app_config::server::JwtConfig,
+    app_config::{self, server::JwtConfig},
     error::{api::ApiError, auth::AuthError},
     http::auth::{HttpMethod, Jwt, Permission},
 };
@@ -24,6 +27,47 @@ use crate::{
 pub struct AuthMiddleware<Inner> {
     inner: Inner,
     jwt_config: Arc<JwtConfig>,
+    path_rules: Arc<PathRulesCache>,
+}
+
+struct PathRulesCache {
+    path_rules: OnceCell<Vec<(Pattern, HashSet<HttpMethod>)>>,
+}
+
+impl PathRulesCache {
+    fn new() -> Self {
+        Self {
+            path_rules: OnceCell::new(),
+        }
+    }
+
+    async fn should_not_protect(&self, path: &str, method: HttpMethod) -> bool {
+        let path_rules = self
+            .path_rules
+            .get_or_init(|| async {
+                let mut built_rules =
+                    Vec::with_capacity(app_config::server().auth().path_rules().len());
+
+                for rule in app_config::server().auth().path_rules().iter() {
+                    if let Some(value) = rule.compile() {
+                        built_rules.push(value)
+                    }
+                }
+
+                built_rules
+            })
+            .await;
+
+        for (pattern, allowed_method) in path_rules {
+            if pattern.matches(path)
+                && (allowed_method.contains(&HttpMethod::All) || allowed_method.contains(&method))
+            {
+                return true;
+            }
+        }
+
+        false
+    }
 }
 
 // 在 Inner 是一个 Service 的情况下，可以为 AuthMiddleware<Inner> 实现 Service
@@ -48,8 +92,24 @@ where
         let cloned = self.inner.clone();
         let mut inner = std::mem::replace(&mut self.inner, cloned);
         let jwt_config = self.jwt_config.clone();
+        let path_rules = self.path_rules.clone();
 
         Box::pin(async move {
+            let call_inner_with_req = |req| async move {
+                match inner.call(req).await {
+                    Ok(val) => Ok(val.into_response()),
+                    Err(_) => unreachable!(),
+                }
+            };
+
+            if path_rules
+                .should_not_protect(req.uri().path(), req.method().into())
+                .await
+            {
+                req.extensions_mut().insert(Permission::new_root());
+                return call_inner_with_req(req).await;
+            }
+
             match extract_and_validate_token(
                 req.headers(),
                 req.method().into(),
@@ -60,10 +120,7 @@ where
             {
                 Ok(permission) => {
                     req.extensions_mut().insert(permission);
-                    match inner.call(req).await {
-                        Ok(val) => Ok(val.into_response()),
-                        Err(_) => unreachable!(),
-                    }
+                    call_inner_with_req(req).await
                 }
                 Err(e) => Ok(e),
             }
@@ -72,12 +129,15 @@ where
 }
 
 #[derive(Clone)]
-pub struct AuthLayer(Arc<JwtConfig>);
+pub struct AuthLayer(Arc<JwtConfig>, Arc<PathRulesCache>);
 
 impl AuthLayer {
     /// 此函数将在堆上创建一个 [`JwtConfig`] 结构作为这个中间件的配置
-    pub fn new(config: Arc<JwtConfig>) -> Self {
-        Self(config.clone())
+    pub fn new() -> Self {
+        Self(
+            Arc::new(app_config::server().auth().jwt_config().clone()),
+            Arc::new(PathRulesCache::new()),
+        )
     }
 }
 
@@ -88,6 +148,7 @@ impl<Inner> Layer<Inner> for AuthLayer {
         AuthMiddleware {
             inner: service,
             jwt_config: self.0.clone(),
+            path_rules: self.1.clone(),
         }
     }
 }
