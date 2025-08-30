@@ -60,24 +60,6 @@ pub struct AnsiString<'a> {
     content: &'a str,
 }
 
-impl<'a> AnsiString<'a> {
-    pub fn new(content: &'a str) -> Self {
-        Self {
-            style: AnsiStyle::new(),
-            is_vanilla: true,
-            content,
-        }
-    }
-
-    pub fn reset(self) -> Self {
-        Self::new(self.content)
-    }
-
-    pub fn get_content(self) -> &'a str {
-        self.content
-    }
-}
-
 impl AnsiColor {
     #[inline(always)]
     pub fn into_fore(self) -> u8 {
@@ -315,5 +297,23 @@ impl Display for AnsiStyle {
 
             f.write_str(ESCAPE_OVER)
         }
+    }
+}
+
+impl<'a> AnsiString<'a> {
+    pub fn new(content: &'a str) -> Self {
+        Self {
+            style: AnsiStyle::new(),
+            is_vanilla: true,
+            content,
+        }
+    }
+
+    pub fn reset(self) -> Self {
+        Self::new(self.content)
+    }
+
+    pub fn get_content(self) -> &'a str {
+        self.content
     }
 }

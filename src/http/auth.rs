@@ -132,7 +132,7 @@ impl AlgKeyPair {
                     "while decoding the given jwt secrete key `{}` into binary form",
                     self.key
                         .get(0..4)
-                        .and_then(|val| Some(format!("{val}...")))
+                        .map(|val| format!("{val}..."))
                         .unwrap_or(self.key.clone())
                 ))
             })?,

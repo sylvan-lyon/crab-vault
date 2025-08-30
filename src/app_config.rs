@@ -46,30 +46,15 @@ impl AppConfig {
     pub fn get_field_value_map() -> HashMap<&'static str, toml_edit::Item> {
         use toml_edit::{Item, Value};
         HashMap::from([
-            ("server.port", Item::Value(/* i16 */ Value::from(0))),
-            ("data.source", Item::Value(/* String */ Value::from(""))),
-            ("meta.source", Item::Value(/* String */ Value::from(""))),
-            ("logger.level", Item::Value(/* String */ Value::from(""))),
-            (
-                "logger.dump_path",
-                Item::Value(/* String */ Value::from("")),
-            ),
-            (
-                "logger.with_ansi",
-                Item::Value(/* bool */ Value::from(true)),
-            ),
-            (
-                "logger.with_file",
-                Item::Value(/* bool */ Value::from(true)),
-            ),
-            (
-                "logger.with_target",
-                Item::Value(/* bool */ Value::from(true)),
-            ),
-            (
-                "logger.with_thread",
-                Item::Value(/* bool */ Value::from(true)),
-            ),
+            ("server.port", Item::Value(Value::from(0))),
+            ("data.source", Item::Value(Value::from(""))),
+            ("meta.source", Item::Value(Value::from(""))),
+            ("logger.level", Item::Value(Value::from(""))),
+            ("logger.dump_path", Item::Value(Value::from(""))),
+            ("logger.with_ansi", Item::Value(Value::from(true))),
+            ("logger.with_file", Item::Value(Value::from(true))),
+            ("logger.with_target", Item::Value(Value::from(true))),
+            ("logger.with_thread", Item::Value(Value::from(true))),
         ])
     }
 
@@ -80,30 +65,15 @@ impl AppConfig {
             ("data", Item::Table(Table::new())),
             ("meta", Item::Table(Table::new())),
             ("logger", Item::Table(Table::new())),
-            ("server.port", Item::Value(/* i16 */ Value::from(0))),
-            ("data.source", Item::Value(/* String */ Value::from(""))),
-            ("meta.source", Item::Value(/* String */ Value::from(""))),
-            ("logger.level", Item::Value(/* String */ Value::from(""))),
-            (
-                "logger.dump_path",
-                Item::Value(/* Option<String> */ Value::from("")),
-            ),
-            (
-                "logger.with_ansi",
-                Item::Value(/* bool */ Value::from(true)),
-            ),
-            (
-                "logger.with_file",
-                Item::Value(/* bool */ Value::from(true)),
-            ),
-            (
-                "logger.with_target",
-                Item::Value(/* bool */ Value::from(true)),
-            ),
-            (
-                "logger.with_thread",
-                Item::Value(/* bool */ Value::from(true)),
-            ),
+            ("server.port", Item::Value(Value::from(0))),
+            ("data.source", Item::Value(Value::from(""))),
+            ("meta.source", Item::Value(Value::from(""))),
+            ("logger.level", Item::Value(Value::from(""))),
+            ("logger.dump_path", Item::Value(Value::from(""))),
+            ("logger.with_ansi", Item::Value(Value::from(true))),
+            ("logger.with_file", Item::Value(Value::from(true))),
+            ("logger.with_target", Item::Value(Value::from(true))),
+            ("logger.with_thread", Item::Value(Value::from(true))),
         ])
     }
 

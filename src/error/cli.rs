@@ -143,7 +143,7 @@ impl From<base64::DecodeError> for CliError {
     fn from(value: base64::DecodeError) -> Self {
         Self::new(
             ErrorKind::Io,
-            format!("base64 error: {}", value.to_string()),
+            format!("base64 error: {}", value),
             None,
         )
     }
