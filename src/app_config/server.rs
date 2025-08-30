@@ -1,11 +1,18 @@
-use std::{collections::HashSet, hash::Hash};
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+};
 
-use base64::{prelude::BASE64_STANDARD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD};
+use clap::error::ErrorKind;
 use glob::Pattern;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 
-use crate::{error::cli::CliError, http::auth::HttpMethod};
+use crate::{
+    error::cli::{CliError, MultiCliError},
+    http::auth::HttpMethod,
+};
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
@@ -17,16 +24,18 @@ pub struct ServerConfig {
 #[derive(Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields, default)]
 pub struct AuthConfig {
-    /// 这里使用 HashSet 来保证如果同一个路径下有多种公开方式时，采取最后指定的公开请求方法而非并集
+    /// 这里使用 Vec
+    ///
+    /// 在编译规则时保证如果同一个路径下有多种公开方式时，采取最后指定的公开请求方法而非并集
     #[serde(default)]
-    pub path_rules: HashSet<PathRule>,
+    pub path_rules: Vec<PathRule>,
 
     /// jwt 鉴权相关设置
     #[serde(default, skip_serializing)]
     pub jwt_config: JwtConfig,
 }
 
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize, Clone)]
 pub struct PathRule {
     /// 路径的通配符，UNIX shell 通配符
     pub pattern: String,
@@ -41,7 +50,7 @@ pub struct PathRule {
 #[serde(from = "JwtConfigBuilder", deny_unknown_fields)]
 pub struct JwtConfig {
     pub encoding_key: EncodingKey,
-    pub decoding_key: DecodingKey,
+    pub decoding_key: HashMap<Algorithm, DecodingKey>,
     pub header: Header,
     pub validation: Validation,
 }
@@ -50,10 +59,27 @@ pub struct JwtConfig {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct JwtConfigBuilder {
-    pub encoding_key: String,
-    pub decoding_key: String,
-    pub encode_algorithm: Algorithm,
+    pub encoding: AlgKeyPair,
+    pub decoding: Vec<AlgKeyPair>,
     pub validation: ValidationConfig,
+}
+
+#[derive(Serialize, Deserialize, Default, Clone)]
+pub struct AlgKeyPair {
+    algorithm: Algorithm,
+    form: KeyForm,
+    #[serde(alias = "path")]
+    key: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum KeyForm {
+    #[default]
+    DerInline,
+    DerFile,
+    PemInline,
+    PemFile,
 }
 
 /// [`jsonwebtoken::Validation`] 没有实现 [`Deserialize`]，
@@ -69,7 +95,6 @@ pub struct ValidationConfig {
     reject_tokens_expiring_in_less_than: u64,
     validate_exp: bool,
     validate_nbf: bool,
-    validate_aud: bool,
     aud: Option<Vec<String>>,
     iss: Option<Vec<String>>,
     sub: Option<String>,
@@ -87,12 +112,16 @@ impl ServerConfig {
 }
 
 impl AuthConfig {
-    pub fn path_rules(&self) -> &HashSet<PathRule> {
-        &self.path_rules
-    }
-
     pub fn jwt_config(&self) -> &JwtConfig {
         &self.jwt_config
+    }
+
+    pub fn get_compiled_path_rules(&self) -> Vec<(Pattern, HashSet<HttpMethod>)> {
+        self.path_rules
+            .iter()
+            .cloned()
+            .filter_map(|rule| rule.compile())
+            .collect()
     }
 }
 
@@ -125,7 +154,7 @@ impl PathRule {
             Ok(val) => Some((val, self.public_methods.iter().copied().collect())),
             Err(e) => {
                 tracing::error!(
-                    "the PATH `{}` of path rules are not written in valid UNIX shell format, details: {e}",
+                    "the PATH `{}` of path rules is not written in valid UNIX shell format, so this pattern is skipped, if that matters, please check your configuration file, details: {e}",
                     self.pattern
                 );
                 None
@@ -136,86 +165,226 @@ impl PathRule {
 
 impl From<JwtConfigBuilder> for JwtConfig {
     fn from(value: JwtConfigBuilder) -> Self {
-        value.build()
+        value.build().map_err(|e| e.exit_now()).unwrap()
     }
 }
 
 impl Default for JwtConfig {
     fn default() -> Self {
-        JwtConfigBuilder::default().build()
+        JwtConfigBuilder::default()
+            .build()
+            .map_err(|e| e.exit_now())
+            .unwrap()
     }
 }
 
 impl Default for JwtConfigBuilder {
     fn default() -> Self {
         Self::new()
-            .decode_key_from_base64_hmac("")
-            .encode_key_from_base64_hmac("")
-            .with_algorithm(Algorithm::HS256)
-            .with_validation(ValidationConfig::default())
     }
 }
 
 impl JwtConfigBuilder {
     pub fn new() -> Self {
         Self {
-            encoding_key: "".to_string(),
-            decoding_key: "".to_string(),
-            encode_algorithm: Algorithm::HS256,
+            encoding: AlgKeyPair::default(),
+            decoding: vec![AlgKeyPair::default()],
             validation: ValidationConfig::default(),
         }
     }
 
-    pub fn decode_key_from_base64_hmac(mut self, secret: &str) -> Self {
-        self.decoding_key = secret.to_owned();
-        self
-    }
+    pub fn build(self) -> Result<JwtConfig, MultiCliError> {
+        let mut errors = MultiCliError::new();
 
-    pub fn encode_key_from_base64_hmac(mut self, secret: &str) -> Self {
-        self.encoding_key = secret.to_owned();
-        self
-    }
+        let decoding_key = self
+            .decoding
+            .iter()
+            .filter_map(|pair| match pair.build_as_decode_key() {
+                Ok(alg_key_pair) => Some(alg_key_pair),
+                Err(e) => {
+                    errors.add(e);
+                    None
+                }
+            })
+            .collect();
 
-    pub fn with_algorithm(mut self, algorithm: Algorithm) -> Self {
-        self.encode_algorithm = algorithm;
-        self
-    }
-
-    pub fn with_validation(mut self, validation: ValidationConfig) -> Self {
-        self.validation = validation;
-        self
-    }
-
-    pub fn build(self) -> JwtConfig {
-        let decode_base64 = |secret, proc| {
-            BASE64_STANDARD
-                .decode(secret)
-                .map_err(|e| CliError::from(e).with_source(proc).handle_strait_forward())
-                .unwrap()
+        let encoding_key = match self.encoding.build_as_encode_key() {
+            Ok(alg_key_pair) => alg_key_pair.1,
+            Err(e) => {
+                errors.add(e);
+                return Err(errors);
+            }
         };
 
-        let encoding_key_bytes = decode_base64(
-            self.encoding_key,
-            "while decoding the encode secret key of jwt".to_string(),
-        );
-
-        let decoding_key_bytes = decode_base64(
-            self.decoding_key,
-            "while decoding the decode secret key of jwt".to_string(),
-        );
-
-        JwtConfig {
-            encoding_key: EncodingKey::from_secret(&encoding_key_bytes),
-            decoding_key: DecodingKey::from_secret(&decoding_key_bytes),
-            header: Header::new(self.encode_algorithm),
-            validation: self.validation.into(),
+        if !errors.is_empty() {
+            return Err(errors);
         }
+
+        let res = JwtConfig {
+            encoding_key,
+            decoding_key,
+            header: Header::new(self.encoding.algorithm),
+            validation: self.validation.into(),
+        };
+
+        if !res.decoding_key.contains_key(&self.encoding.algorithm) {
+            tracing::warn!(
+                "no decoding key provided for encoding algorithm {:?}; tokens signed by this server might not be verifiable",
+                self.encoding.algorithm
+            );
+        }
+
+        Ok(res)
+    }
+}
+
+impl AlgKeyPair {
+    fn get_key(&self) -> Result<Vec<u8>, CliError> {
+        let res = match self.form {
+            KeyForm::DerInline => BASE64_STANDARD.decode(self.key.clone()).map_err(|e| {
+                CliError::from(e).add_source(format!(
+                    "while decoding the given jwt secrete key `{}` into binary form",
+                    self.key
+                        .get(0..4)
+                        .and_then(|val| Some(format!("{val}...")))
+                        .unwrap_or(self.key.clone())
+                ))
+            })?,
+            KeyForm::DerFile => std::fs::read(&self.key).map_err(|e| {
+                CliError::from(e).add_source(format!("while reading the der key from {}", self.key))
+            })?,
+            KeyForm::PemInline => self.key.clone().into_bytes(),
+            KeyForm::PemFile => std::fs::read(&self.key).map_err(|e| {
+                CliError::from(e).add_source(format!("while reading the pem key from {}", self.key))
+            })?,
+        };
+
+        if res.len() < 32 {
+            tracing::warn!("the secret key is too short to prevent brute force cracking")
+        }
+
+        Ok(res)
+    }
+
+    fn build_as_encode_key(&self) -> Result<(Algorithm, EncodingKey), CliError> {
+        if self.form.is_der() {
+            let build_from_der = match self.algorithm {
+                Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512 => EncodingKey::from_secret,
+                Algorithm::RS256 | Algorithm::RS384 | Algorithm::RS512 => EncodingKey::from_rsa_der,
+                Algorithm::PS256 | Algorithm::PS384 | Algorithm::PS512 => EncodingKey::from_rsa_der,
+                Algorithm::ES256 | Algorithm::ES384 => EncodingKey::from_ec_der,
+                Algorithm::EdDSA => EncodingKey::from_ed_der,
+            };
+
+            Ok((
+                self.algorithm,
+                build_from_der(&self.get_key().map_err(|e| {
+                    e.add_source("while building jwt encoding key from a der form".into())
+                })?),
+            ))
+        } else if self.form.is_pem() {
+            let build_from_pem = match self.algorithm {
+                Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512 => {
+                    return Err(CliError::new(
+                        ErrorKind::Io,
+                        format!(
+                            "cannot use a .pem file `{}` to store a hmac secret key, you should use a .der file or a inline base64 encoded string",
+                            self.key
+                        ),
+                        Some("while building jwt encoding key from a der form".into()),
+                    ));
+                }
+                Algorithm::RS256 | Algorithm::RS384 | Algorithm::RS512 => EncodingKey::from_rsa_pem,
+                Algorithm::PS256 | Algorithm::PS384 | Algorithm::PS512 => EncodingKey::from_rsa_pem,
+                Algorithm::ES256 | Algorithm::ES384 => EncodingKey::from_ec_pem,
+                Algorithm::EdDSA => EncodingKey::from_ed_pem,
+            };
+
+            Ok((
+                self.algorithm,
+                build_from_pem(&self.get_key().map_err(|e| {
+                    e.add_source("while building jwt encoding key from a pem form".into())
+                })?)
+                .map_err(|e| {
+                    CliError::new(
+                        ErrorKind::Io,
+                        e.to_string(),
+                        Some("while building jwt encoding key from a pem form".into()),
+                    )
+                })?,
+            ))
+        } else {
+            unreachable!(
+                "Sylvan, 你加了新的变体但是没有添加相应的条件判断，去检查你的 is_der 和 is_pem 方法是否包含了所有的情况"
+            )
+        }
+    }
+
+    fn build_as_decode_key(&self) -> Result<(Algorithm, DecodingKey), CliError> {
+        if self.form.is_der() {
+            let build_from_der = match self.algorithm {
+                Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512 => DecodingKey::from_secret,
+                Algorithm::RS256 | Algorithm::RS384 | Algorithm::RS512 => DecodingKey::from_rsa_der,
+                Algorithm::PS256 | Algorithm::PS384 | Algorithm::PS512 => DecodingKey::from_rsa_der,
+                Algorithm::ES256 | Algorithm::ES384 => DecodingKey::from_ec_der,
+                Algorithm::EdDSA => DecodingKey::from_ed_der,
+            };
+
+            Ok((
+                self.algorithm,
+                build_from_der(&self.get_key().map_err(|e| {
+                    e.add_source("while building jwt encoding key from a der form".into())
+                })?),
+            ))
+        } else if self.form.is_pem() {
+            let build_from_pem = match self.algorithm {
+                Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512 => {
+                    return Err(CliError::new(
+                        ErrorKind::Io,
+                        format!(
+                            "cannot use a .pem file `{}` to store a hmac secret key, you should use a .der file or a inline base64 encoded string",
+                            self.key
+                        ),
+                        Some("while building jwt decoding key from a pem form".into()),
+                    ));
+                }
+                Algorithm::RS256 | Algorithm::RS384 | Algorithm::RS512 => DecodingKey::from_rsa_pem,
+                Algorithm::PS256 | Algorithm::PS384 | Algorithm::PS512 => DecodingKey::from_rsa_pem,
+                Algorithm::ES256 | Algorithm::ES384 => DecodingKey::from_ec_pem,
+                Algorithm::EdDSA => DecodingKey::from_ed_pem,
+            };
+
+            Ok((
+                self.algorithm,
+                build_from_pem(&self.get_key()?).map_err(|e| {
+                    CliError::new(
+                        ErrorKind::Io,
+                        e.to_string(),
+                        Some("while building jwt decoding key from a pem form".into()),
+                    )
+                })?,
+            ))
+        } else {
+            unreachable!(
+                "Sylvan, 你加了新的变体但是没有添加相应的条件判断，去检查你的 is_der 和 is_pem 方法是否包含了所有的情况"
+            )
+        }
+    }
+}
+
+impl KeyForm {
+    fn is_der(&self) -> bool {
+        matches!(self, KeyForm::DerInline | KeyForm::DerFile)
+    }
+
+    fn is_pem(&self) -> bool {
+        matches!(self, KeyForm::PemInline | KeyForm::PemFile)
     }
 }
 
 impl ValidationConfig {
     pub fn new(alg: Algorithm) -> Self {
-        let required_claims =vec!["exp".into()];
+        let required_claims = vec!["exp".into()];
 
         Self {
             required_spec_claims: required_claims,
@@ -224,7 +393,6 @@ impl ValidationConfig {
 
             validate_exp: true,
             validate_nbf: false,
-            validate_aud: true,
 
             iss: None,
             aud: None,
@@ -250,7 +418,6 @@ impl From<ValidationConfig> for Validation {
             reject_tokens_expiring_in_less_than,
             validate_exp,
             validate_nbf,
-            validate_aud,
             aud,
             iss,
             sub,
@@ -263,7 +430,7 @@ impl From<ValidationConfig> for Validation {
         validation.reject_tokens_expiring_in_less_than = reject_tokens_expiring_in_less_than;
         validation.validate_exp = validate_exp;
         validation.validate_nbf = validate_nbf;
-        validation.validate_aud = validate_aud;
+        validation.validate_aud = matches!(&aud, Some(val) if !val.is_empty());
         validation.aud = aud.map(|val| val.into_iter().collect());
         validation.iss = iss.map(|val| val.into_iter().collect());
         validation.sub = sub;

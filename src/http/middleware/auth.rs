@@ -44,18 +44,7 @@ impl PathRulesCache {
     async fn should_not_protect(&self, path: &str, method: HttpMethod) -> bool {
         let path_rules = self
             .path_rules
-            .get_or_init(|| async {
-                let mut built_rules =
-                    Vec::with_capacity(app_config::server().auth().path_rules().len());
-
-                for rule in app_config::server().auth().path_rules().iter() {
-                    if let Some(value) = rule.compile() {
-                        built_rules.push(value)
-                    }
-                }
-
-                built_rules
-            })
+            .get_or_init(async || app_config::server().auth().get_compiled_path_rules())
             .await;
 
         for (pattern, allowed_method) in path_rules {

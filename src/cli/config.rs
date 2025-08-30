@@ -27,13 +27,13 @@ pub(super) async fn exec(config_path: String, command: Command) {
     match command {
         Command::Set { field_path, value } => set::exec(config_path, field_path, value)
             .await
-            .unwrap_or_else(|e| e.handle_strait_forward()),
+            .unwrap_or_else(|e| e.exit_now()),
         Command::Show { field_path } => show::exec(config_path, field_path)
             .await
-            .unwrap_or_else(|e| e.handle_strait_forward()),
+            .unwrap_or_else(|e| e.exit_now()),
         Command::Unset { field_path } => unset::exec(config_path, field_path)
             .await
-            .unwrap_or_else(|e| e.handle_strait_forward()),
+            .unwrap_or_else(|e| e.exit_now()),
     }
 }
 
@@ -61,7 +61,7 @@ mod set {
             match kind {
                 Item::Value(kind) => {
                     let converted_value =
-                        parse_value(value, kind).unwrap_or_else(|e| e.handle_strait_forward());
+                        parse_value(value, kind).unwrap_or_else(|e| e.exit_now());
 
                     // 文件存在就读取文件，文件不存在就创建一个新的
                     let config_content = if Path::new(&config_path).exists() {

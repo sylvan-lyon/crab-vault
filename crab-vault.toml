@@ -1,37 +1,25 @@
 [server]
 port = 32767
 
+[server.auth]
+# 开发环境所有端点公开访问
 [[server.auth.path_rules]]
-public_methods = ["GET", "DELETE"]
-pattern = "*/*.json"
-
-
-[[server.auth.path_rules]]
-public_methods = ["GET", "DELETE"]
-pattern = "*/*.json"
+pattern = "*"
+public_methods = ["ALL"]
 
 [server.auth.jwt_config]
-encoding_key = ""
-decoding_key = ""
-encode_algorithm = "HS256"
+encoding = {algorithm = "HS256", form = "der_inline", key = "aGVsbG8td29ybGQ="}  # 开发环境密钥
+decoding = [{algorithm = "HS256", form = "der_inline", key = "aGVsbG8td29ybGQ="}]  # 开发环境密钥，注意：decoding_key 是一个数组，可以接受很多的密钥
 
 [server.auth.jwt_config.validation]
-aud = ["crab-vault"]
-validate_aud = true
-# 其他的配置字段
+aud = ["crab vault"]
 
 [logger]
-level = "trace"
-with_ansi = true
+level = "debug"  # 开发环境使用更详细的日志
+with_ansi = true  # 开发环境使用彩色输出
 with_file = true
 with_target = true
 with_thread = true
-# default to unset
-# dump_path = "log"
-# dump_level = "info"
-
-[data]
-source = "data"
-
-[meta]
-source = "meta"
+# 开发环境可以不输出到文件
+# dump_path = "./logs"
+# dump_level = "debug"

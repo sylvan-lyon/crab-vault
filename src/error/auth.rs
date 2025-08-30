@@ -2,6 +2,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use jsonwebtoken::Algorithm;
 use serde::Serialize;
 use thiserror::Error;
 
@@ -10,6 +11,9 @@ use thiserror::Error;
 pub enum AuthError {
     #[error("missing authorization header")]
     MissingAuthHeader,
+
+    #[error("algorithm `{:?}` unsupported", 0)]
+    InvalidAlgorithm(Algorithm),
 
     #[error("invalid authorization format: expected 'Bearer <token>'")]
     InvalidAuthFormat,
@@ -86,6 +90,7 @@ impl IntoResponse for AuthError {
             | AuthError::TokenInvalid
             | AuthError::TokenExpired
             | AuthError::TokenNotYetValid
+            | AuthError::InvalidAlgorithm(_)
             | AuthError::InvalidSignature
             | AuthError::InvalidIssuer
             | AuthError::InvalidAudience

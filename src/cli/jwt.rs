@@ -65,7 +65,7 @@ pub fn exec(cmd: Command) {
         Command::Generate(args) => generate_jwt(args),
         Command::Verify => verify_jwt(),
     }
-    .map_err(|e| e.handle_strait_forward())
+    .map_err(|e| e.exit_now())
     .unwrap()
 }
 
@@ -144,25 +144,15 @@ fn verify_jwt() -> Result<(), CliError> {
 
     let jwt_config = app_config::server().auth().jwt_config();
 
-    // 解码并验证 token
-    let decoded = Jwt::<Permission>::decode(token, jwt_config).map_err(|e| {
-        CliError::new(
-            ErrorKind::Io,
-            format!("Token verification failed: {e}"),
-            None,
-        )
-    })?;
+    // 解码
+    let decoded = Jwt::<Permission>::decode_unchecked(token, jwt_config).map_err(CliError::from)?;
+    let pretty_json = serde_json::to_string_pretty(&decoded).map_err(CliError::from)?;
 
-    // 将解码后的载荷美化为 JSON 字符串
-    let pretty_json = serde_json::to_string_pretty(&decoded).map_err(|e| {
-        CliError::new(
-            ErrorKind::Io,
-            format!("Failed to serialize decoded token: {e}"),
-            None,
-        )
-    })?;
-
-    println!("Token verified successfully. Payload (Claims):\n");
+    // 验证
+    match Jwt::<Permission>::decode(token, jwt_config) {
+        Ok(_) => println!("Token verified successfully. Payload (Claims):\n"),
+        Err(e) => println!("Token invalid because of {e}. Payload (Claims):\n"),
+    }
 
     println!("{}", pretty_json);
     Ok(())

@@ -3,11 +3,11 @@ mod jwt;
 pub mod run;
 
 use clap::{
-    Parser, Subcommand,
-    builder::{Styles, styling},
+    builder::{styling, Styles}, ColorChoice, Parser, Subcommand
 };
 
 #[derive(Parser)]
+#[command(color = ColorChoice::Always)]
 #[command(
     styles = Styles::styled()
         .header(styling::AnsiColor::Green.on_default().bold().underline())

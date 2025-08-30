@@ -10,16 +10,38 @@ use crate::{cli::Cli, error::auth::AuthError};
 
 pub type CliResult<T> = Result<T, CliError>;
 
+#[derive(Debug)]
 pub struct CliError {
     kind: ErrorKind,
     general_message: String,
-    source: Option<String>,
+    source: Vec<String>,
 }
 
-impl CliError {
-    pub fn with_source(mut self, source: String) -> Self {
-        self.source = Some(source);
+pub struct MultiCliError {
+    errors: Vec<CliError>,
+}
+
+impl MultiCliError {
+    pub fn new() -> Self {
+        Self { errors: vec![] }
+    }
+
+    pub fn add(&mut self, error: CliError) -> &mut Self {
+        self.errors.push(error);
         self
+    }
+
+    pub fn exit_now(self) -> ! {
+        let mut final_message = "".to_string();
+        for e in self.errors {
+            final_message.push_str(&format!("\n\n{}", e.into_message()));
+        }
+
+        Cli::command().error(ErrorKind::Io, final_message).exit()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.errors.len() == 0
     }
 }
 
@@ -28,18 +50,32 @@ impl CliError {
         Self {
             kind,
             general_message,
-            source,
+            source: match source {
+                Some(val) => vec![val],
+                None => vec![],
+            },
         }
     }
 
-    pub fn handle_strait_forward(self) -> ! {
-        let message;
-        if let Some(src) = self.source {
-            message = format!("\n{}\n    {src}", self.general_message);
+    pub fn exit_now(self) -> ! {
+        Cli::command().error(self.kind, self.into_message()).exit()
+    }
+
+    pub fn add_source(mut self, source: String) -> Self {
+        self.source.push(source);
+        self
+    }
+
+    pub fn into_message(self) -> String {
+        if self.source.is_empty() {
+            format!("    - {}", self.general_message)
         } else {
-            message = self.general_message;
+            let mut message = format!("    - {}", self.general_message);
+            for src in self.source.into_iter().rev() {
+                message.push_str(&format!("\n    | {src}"))
+            }
+            message
         }
-        Cli::command().error(self.kind, message).exit()
     }
 }
 
@@ -105,38 +141,35 @@ impl From<toml_edit::TomlError> for CliError {
 
 impl From<base64::DecodeError> for CliError {
     fn from(value: base64::DecodeError) -> Self {
-        match value {
-            base64::DecodeError::InvalidByte(offset, byte) => Self::new(
-                ErrorKind::Io,
-                format!(
-                    "Invalid byte while handling the base64 input{offset}{:0x}",
-                    byte
-                ),
-                None,
-            ),
-            base64::DecodeError::InvalidLength(_) => todo!(),
-            base64::DecodeError::InvalidLastSymbol(_, _) => todo!(),
-            base64::DecodeError::InvalidPadding => todo!(),
-        }
+        Self::new(
+            ErrorKind::Io,
+            format!("base64 error: {}", value.to_string()),
+            None,
+        )
     }
 }
 
 impl From<AuthError> for CliError {
     fn from(value: AuthError) -> Self {
         let (general_message, source) = match value {
-            AuthError::MissingAuthHeader => ("missing auth header".to_string(), None),
-            AuthError::InvalidAuthFormat => ("invalid token format".to_string(), None),
-            AuthError::TokenInvalid => ("token is invalid".to_string(), None),
-            AuthError::TokenExpired => ("token expired".to_string(), None),
-            AuthError::TokenNotYetValid => ("token not yet valid".to_string(), None),
-            AuthError::InvalidSignature => ("token signature is invalid".to_string(), None),
-            AuthError::InvalidIssuer => ("token is issued by untrusted issuer".to_string(), None),
-            AuthError::InvalidAudience => ("token has invalid audience".to_string(), None),
-            AuthError::InvalidSubject => ("subject of this token is invalid".to_string(), None),
+            AuthError::MissingAuthHeader => ("missing auth header".into(), None),
+            AuthError::InvalidAuthFormat => ("invalid token format".into(), None),
+            AuthError::TokenInvalid => ("token is invalid".into(), None),
+            AuthError::TokenExpired => ("token expired".into(), None),
+            AuthError::TokenNotYetValid => ("token not yet valid".into(), None),
+            AuthError::InvalidSignature => ("token signature is invalid".into(), None),
+            AuthError::InvalidAlgorithm(alg) => {
+                (format!("cannot validate token encoded by {:?}", alg), None)
+            }
+            AuthError::InvalidIssuer => ("token is issued by untrusted issuer".into(), None),
+            AuthError::InvalidAudience => ("token has invalid audience".into(), None),
+            AuthError::InvalidSubject => ("subject of this token is invalid".into(), None),
             AuthError::MissingClaim(claim) => (format!("claim {claim} is absent"), None),
-            AuthError::InsufficientPermissions => ("the permission is not sufficient".to_string(), None),
-            AuthError::TokenRevoked => ("this token is revoked by the server".to_string(), None),
-            AuthError::InternalError(e) => ("something wrong while handling the token".to_string(), Some(e)),
+            AuthError::InsufficientPermissions => ("the permission is not sufficient".into(), None),
+            AuthError::TokenRevoked => ("this token is revoked by the server".into(), None),
+            AuthError::InternalError(e) => {
+                ("something wrong while handling the token".into(), Some(e))
+            }
         };
 
         Self::new(ErrorKind::Io, general_message, source)

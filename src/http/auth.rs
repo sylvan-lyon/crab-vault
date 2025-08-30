@@ -79,7 +79,26 @@ impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
     }
 
     pub fn decode(token: &str, config: &JwtConfig) -> Result<Jwt<P>, AuthError> {
-        Ok(decode::<Jwt<P>>(token, &config.decoding_key, &config.validation)?.claims)
+        let header = jsonwebtoken::decode_header(token)?;
+        let key = config
+            .decoding_key
+            .get(&header.alg)
+            .ok_or(AuthError::InvalidAlgorithm(header.alg))?;
+        Ok(decode::<Jwt<P>>(token, key, &config.validation)?.claims)
+    }
+
+    pub fn decode_unchecked(token: &str, config: &JwtConfig) -> Result<Jwt<P>, AuthError> {
+        let header = jsonwebtoken::decode_header(token)?;
+        let key = config
+            .decoding_key
+            .get(&header.alg)
+            .ok_or(AuthError::InvalidAlgorithm(header.alg))?;
+        let mut validation = Validation::new(header.alg);
+        validation.validate_aud = false;
+        validation.validate_exp = false;
+        validation.validate_nbf = false;
+        validation.insecure_disable_signature_validation();
+        Ok(decode::<Jwt<P>>(token, key, &validation)?.claims)
     }
 }
 

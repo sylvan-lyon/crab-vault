@@ -169,7 +169,7 @@ impl AppConfig {
                 if let Some(log_level) = log_level {
                     self.logger.level = log_level
                         .parse()
-                        .map_err(|e: crate::error::cli::CliError| e.handle_strait_forward())
+                        .map_err(|e: crate::error::cli::CliError| e.exit_now())
                         .unwrap();
                 }
 
