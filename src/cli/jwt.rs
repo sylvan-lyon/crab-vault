@@ -70,7 +70,13 @@ pub fn exec(cmd: Command) {
 }
 
 fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
-    let jwt_config = app_config::server().auth().jwt_config();
+    let jwt_config = app_config::server()
+        .auth()
+        .jwt_config_builder()
+        .clone()
+        .build()
+        .map_err(|e| e.exit_now())
+        .unwrap();
     let validation_config = &jwt_config.validation;
 
     let iss = if args.issuer.is_some() {
@@ -116,7 +122,7 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
     };
 
     // 编码 JWT
-    let token = Jwt::encode(&claims, jwt_config)
+    let token = Jwt::encode(&claims, &jwt_config)
         .map_err(|e| CliError::new(ErrorKind::Io, format!("JWT encoding failed: {e}"), None))?;
 
     println!("{}", token);
@@ -142,14 +148,20 @@ fn verify_jwt() -> Result<(), CliError> {
         ));
     }
 
-    let jwt_config = app_config::server().auth().jwt_config();
+    let jwt_config = app_config::server()
+        .auth()
+        .jwt_config_builder()
+        .clone()
+        .build()
+        .map_err(|e| e.exit_now())
+        .unwrap();
 
     // 解码
-    let decoded = Jwt::<Permission>::decode_unchecked(token, jwt_config).map_err(CliError::from)?;
+    let decoded = Jwt::<Permission>::decode_unchecked(token, &jwt_config).map_err(CliError::from)?;
     let pretty_json = serde_json::to_string_pretty(&decoded).map_err(CliError::from)?;
 
     // 验证
-    match Jwt::<Permission>::decode(token, jwt_config) {
+    match Jwt::<Permission>::decode(token, &jwt_config) {
         Ok(_) => println!("Token verified successfully. Payload (Claims):\n"),
         Err(e) => println!("Token invalid because of {e}. Payload (Claims):\n"),
     }

@@ -18,9 +18,9 @@ use tokio::sync::OnceCell;
 use tower::{Layer, Service};
 
 use crate::{
-    app_config::{self, server::JwtConfig},
+    app_config,
     error::{api::ApiError, auth::AuthError},
-    http::auth::{HttpMethod, Jwt, Permission},
+    http::auth::{HttpMethod, Jwt, JwtConfig, Permission},
 };
 
 #[derive(Clone)]
@@ -124,7 +124,15 @@ impl AuthLayer {
     /// 此函数将在堆上创建一个 [`JwtConfig`] 结构作为这个中间件的配置
     pub fn new() -> Self {
         Self(
-            Arc::new(app_config::server().auth().jwt_config().clone()),
+            Arc::new(
+                app_config::server()
+                    .auth()
+                    .jwt_config_builder()
+                    .clone()
+                    .build()
+                    .map_err(|e| e.exit_now())
+                    .unwrap(),
+            ),
             Arc::new(PathRulesCache::new()),
         )
     }
