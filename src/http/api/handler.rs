@@ -6,13 +6,13 @@ use axum::{
 };
 
 use crate::{
-    error::engine::EngineResult,
     http::{
         api::{response::{BucketMetaResponse, ObjectMetaResponse}, util::merge_json_value, ApiState},
         extractor::{auth::RestrictedBytes, meta::NewObjectMetaExtractor},
     },
-    storage::{BucketMeta, DataEngine, MetaEngine},
 };
+
+use crab_vault_engine::{error::EngineResult, *, DataEngine, MetaEngine};
 
 // --- Bucket Handlers ---
 #[debug_handler]

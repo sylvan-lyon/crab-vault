@@ -13,15 +13,12 @@ use axum::{
     },
     response::{IntoResponse, Response},
 };
+use crab_vault_auth::{error::AuthError, HttpMethod, Jwt, JwtConfig, Permission};
 use glob::Pattern;
 use tokio::sync::OnceCell;
 use tower::{Layer, Service};
 
-use crate::{
-    app_config,
-    error::{api::ApiError, auth::AuthError},
-    http::auth::{HttpMethod, Jwt, JwtConfig, Permission},
-};
+use crate::{app_config, error::api::ApiError};
 
 #[derive(Clone)]
 pub struct AuthMiddleware<Inner> {

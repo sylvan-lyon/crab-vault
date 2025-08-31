@@ -4,11 +4,9 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use bytes::Bytes;
+use crab_vault_auth::{error::AuthError, Permission};
 
-use crate::{
-    error::{api::ApiError, auth::AuthError},
-    http::auth::Permission,
-};
+use crate::error::api::ApiError;
 
 #[allow(dead_code)]
 pub struct PermissionExtractor(pub Permission);

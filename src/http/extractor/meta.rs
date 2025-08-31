@@ -2,10 +2,11 @@ use axum::{extract::FromRequestParts, http::{header, request::Parts}};
 use base64::{prelude::BASE64_STANDARD, Engine};
 use bytes::Bytes;
 use chrono::Utc;
+use crab_vault_engine::ObjectMeta;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use crate::{error::api::ApiError, http::USER_META_PREFIX, storage::ObjectMeta};
+use crate::{error::api::ApiError, http::USER_META_PREFIX};
 
 /// 从请求头中提取元数据，用于创建新的 ObjectMeta。
 #[derive(Debug)]

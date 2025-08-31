@@ -1,11 +1,18 @@
 [package]
 name = "crab-vault"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2024"
 description = "An object storage service written in rust."
-authors = ["Sylvan Lyon <sylvanlyon@gmail.com>"]
+license = "MIT"
+repository = "https://github.com/sylvan-lyon/crab-vault.git"
 
-[dependencies]
+[workspace]
+members = [
+    "crates/crab-vault-auth",
+    "crates/crab-vault-engine"
+]
+
+[workspace.dependencies]
 axum = { version = "0.8", features = ["macros"] }
 base64 = "0.22.1"
 bytes = { version = "1.10", features = ["serde"] }
@@ -26,3 +33,28 @@ tower-http = { version = "0.6", features = ["trace", "timeout", "cors", "limit",
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1.18", features = ["v4"] }
+
+[dependencies]
+axum = { workspace = true }
+base64 = { workspace = true }
+bytes = { workspace = true }
+chrono.workspace = true
+clap = { workspace = true }
+config = { workspace = true }
+glob = { workspace = true }
+jsonwebtoken = { workspace = true }
+rand = { workspace = true }
+serde.workspace = true
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+toml_edit = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }
+#
+crab-vault-auth = { path = "crates/crab-vault-auth", version = "*" }
+crab-vault-engine = { path = "crates/crab-vault-engine", version = "*" }

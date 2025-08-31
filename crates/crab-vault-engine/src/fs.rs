@@ -6,8 +6,8 @@ use tokio::{
 };
 
 use crate::{
-    error::engine::{EngineError, EngineResult},
-    storage::{BucketMeta, DataEngine, MetaEngine, ObjectMeta},
+    error::{EngineError, EngineResult},
+    {BucketMeta, DataEngine, MetaEngine, ObjectMeta},
 };
 
 pub struct FsDataEngine {
@@ -340,7 +340,7 @@ impl MetaEngine for FsMetaEngine {
 #[cfg(test)]
 mod data_engine_tests {
     use super::*;
-    use crate::error::engine::EngineError;
+    use crate::error::EngineError;
     use std::path::PathBuf;
 
     const TEST_BASE_DIR: &str = "./data_test";
@@ -514,7 +514,7 @@ mod data_engine_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{BucketMeta, ObjectMeta};
+    use crate::{BucketMeta, ObjectMeta};
     use std::path::PathBuf;
 
     const TEST_META_BASE_DIR: &str = "./meta_test";

@@ -3,10 +3,11 @@ use std::{
     hash::Hash,
 };
 
+use crab_vault_auth::HttpMethod;
 use glob::Pattern;
 use serde::{Deserialize, Serialize};
 
-use crate::http::auth::{HttpMethod, JwtConfigBuilder};
+use crate::http::auth::JwtConfigBuilder;
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]

@@ -1,10 +1,9 @@
-use crab_vault::{
+use chrono::Local;
+
+use crab_vault::color::{
     AnsiColor::{self, *},
     AnsiString, AnsiStyle, FontStyle,
 };
-
-use chrono::Local;
-
 use tracing::span;
 use tracing_subscriber::Layer;
 
@@ -34,7 +33,7 @@ where
 {
     fn on_event(&self, event: &tracing::Event<'_>, ctx: tracing_subscriber::layer::Context<'_, S>) {
         if LogLevel::from(*event.metadata().level()) < self.min_level {
-            return
+            return;
         }
 
         let style = self.severity_style(event);

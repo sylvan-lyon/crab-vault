@@ -1,7 +1,8 @@
 use axum::{http::{header, HeaderMap, HeaderValue, StatusCode}, response::{IntoResponse, Response}};
+use crab_vault_engine::{BucketMeta, ObjectMeta};
 use serde::Serialize;
 
-use crate::{http::USER_META_PREFIX, storage::{BucketMeta, ObjectMeta}};
+use crate::{http::USER_META_PREFIX};
 
 
 

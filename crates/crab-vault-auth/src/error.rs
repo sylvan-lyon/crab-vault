@@ -1,7 +1,10 @@
+use std::{string::FromUtf8Error, sync::Arc};
+
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use base64::DecodeError;
 use jsonwebtoken::Algorithm;
 use serde::Serialize;
 use thiserror::Error;
@@ -12,40 +15,61 @@ pub enum AuthError {
     #[error("missing authorization header")]
     MissingAuthHeader,
 
-    #[error("algorithm `{:?}` unsupported", 0)]
+    #[error("key of algorithm `{0:?}` is undefined")]
     InvalidAlgorithm(Algorithm),
 
     #[error("invalid authorization format: expected 'Bearer <token>'")]
     InvalidAuthFormat,
 
-    #[error("jwt error: token is invalid")]
+    #[error("Some of the text was invalid UTF-8: {0}")]
+    InvalidUtf8(
+        #[from]
+        #[serde(skip)]
+        FromUtf8Error,
+    ),
+
+    #[error("An error happened while serializing/deserializing JSON: {0}")]
+    InvalidJson(
+        #[from]
+        #[serde(skip)]
+        Arc<serde_json::Error>,
+    ),
+
+    #[error("An error happened when decoding some base64 text: {0}")]
+    InvalidBase64(
+        #[from]
+        #[serde(skip)]
+        DecodeError,
+    ),
+
+    #[error("token is invalid")]
     TokenInvalid,
 
-    #[error("jwt error: token has expired")]
+    #[error("token has expired")]
     TokenExpired,
 
-    #[error("jwt error: token is not yet valid")]
+    #[error("token is not yet valid")]
     TokenNotYetValid,
 
-    #[error("jwt error: invalid signature")]
+    #[error("invalid signature")]
     InvalidSignature,
 
-    #[error("jwt error: untrusted issuer")]
+    #[error("untrusted issuer")]
     InvalidIssuer,
 
-    #[error("jwt error: invalid audience")]
+    #[error("invalid audience")]
     InvalidAudience,
 
-    #[error("jwt error: invalid subject")]
+    #[error("invalid subject")]
     InvalidSubject,
 
-    #[error("jwt error: required claim missing: {0}")]
+    #[error("required claim `{0}` missing")]
     MissingClaim(String),
 
-    #[error("jwt error: insufficient permissions for this operation")]
+    #[error("insufficient permissions for this operation")]
     InsufficientPermissions,
 
-    #[error("jwt error: token has been revoked")]
+    #[error("token has been revoked")]
     TokenRevoked,
 
     #[error("internal server error during authentication, details: {0}")]
@@ -73,9 +97,9 @@ impl From<jsonwebtoken::errors::Error> for AuthError {
             InvalidKeyFormat => AuthError::InternalError("a key is provided with an invalid format".into()),
             InvalidAlgorithm => AuthError::InternalError("the algorithm in the header doesn't match the one passed to decode or the encoding/decoding key used doesn't match the alg requested".to_string()),
             MissingAlgorithm => AuthError::InternalError("the Validation struct does not contain at least 1 algorithm".into()),
-            Base64(e) => AuthError::InternalError(format!("An error happened when decoding some base64 text: {e}")),
-            Json(e) => AuthError::InternalError(format!("An error happened while serializing/deserializing JSON: {e}")),
-            Utf8(e) => AuthError::InternalError(format!("Some of the text was invalid UTF-8: {e}")),
+            Base64(e) => AuthError::InvalidBase64(e),
+            Utf8(e) => AuthError::InvalidUtf8(e),
+            Json(e) => AuthError::InvalidJson(e),
             Crypto(e) => AuthError::InternalError(format!("Something unspecified went wrong with crypto: {e}")),
             _ => todo!()
         }
@@ -96,6 +120,9 @@ impl IntoResponse for AuthError {
             | AuthError::InvalidAudience
             | AuthError::InvalidSubject
             | AuthError::MissingClaim(_)
+            | AuthError::InvalidUtf8(_)
+            | AuthError::InvalidJson(_)
+            | AuthError::InvalidBase64(_)
             | AuthError::TokenRevoked => StatusCode::UNAUTHORIZED,
 
             AuthError::InsufficientPermissions => StatusCode::FORBIDDEN,

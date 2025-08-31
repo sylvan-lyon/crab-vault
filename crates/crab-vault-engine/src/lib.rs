@@ -1,10 +1,11 @@
-mod fs;
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-use crate::error::engine::EngineResult;
+use crate::error::EngineResult;
+
+pub mod error;
+pub mod fs;
 
 pub type DataSource = fs::FsDataEngine;
 pub type MetaSource = fs::FsMetaEngine;
@@ -43,24 +44,38 @@ pub trait DataEngine: Sized {
     fn new<P: AsRef<Path>>(base_dir: P) -> EngineResult<Self>;
 
     /// 创建一个 bucket，此操作是幂等的
-    async fn create_bucket(&self, bucket_name: &str) -> EngineResult<()>;
+    fn create_bucket(
+        &self,
+        bucket_name: &str,
+    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
 
     /// 删除一个 bucket，此操作是幂等的
-    async fn delete_bucket(&self, bucket_name: &str) -> EngineResult<()>;
+    fn delete_bucket(
+        &self,
+        bucket_name: &str,
+    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
 
     /// 创建一个 object，此操作是幂等的
-    async fn create_object(
+    fn create_object(
         &self,
         bucket_name: &str,
         object_name: &str,
         data: &[u8],
-    ) -> EngineResult<()>;
+    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
 
     /// 读取一个 object，此操作是幂等的
-    async fn read_object(&self, bucket_name: &str, object_name: &str) -> EngineResult<Vec<u8>>;
+    fn read_object(
+        &self,
+        bucket_name: &str,
+        object_name: &str,
+    ) -> impl std::future::Future<Output = EngineResult<Vec<u8>>> + Send;
 
     /// 删除一个 object，此操作是幂等的
-    async fn delete_object(&self, bucket_name: &str, object_name: &str) -> EngineResult<()>;
+    fn delete_object(
+        &self,
+        bucket_name: &str,
+        object_name: &str,
+    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
 }
 
 /// 此 trait 定义了 metadata 从何处来
@@ -70,37 +85,66 @@ pub trait MetaEngine: Sized {
     // --- Bucket Operations ---
 
     /// 创建一个新的 Bucket 元数据
-    async fn create_bucket_meta(&self, meta: &BucketMeta) -> EngineResult<()>;
+    fn create_bucket_meta(
+        &self,
+        meta: &BucketMeta,
+    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
 
     /// 获取指定 Bucket 的元数据
-    async fn read_bucket_meta(&self, bucket_name: &str) -> EngineResult<BucketMeta>;
+    fn read_bucket_meta(
+        &self,
+        bucket_name: &str,
+    ) -> impl std::future::Future<Output = EngineResult<BucketMeta>> + Send;
 
     /// 删除一个 Bucket 元数据 (要求 Bucket 为空)
-    async fn delete_bucket_meta(&self, bucket_name: &str) -> EngineResult<()>;
+    fn delete_bucket_meta(
+        &self,
+        bucket_name: &str,
+    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
 
     /// 列出所有的 Bucket 的元数据
-    async fn list_buckets_meta(&self) -> EngineResult<Vec<BucketMeta>>;
+    fn list_buckets_meta(
+        &self,
+    ) -> impl std::future::Future<Output = EngineResult<Vec<BucketMeta>>> + Send;
 
     /// 更新一个 object 的 last_update 字段
-    async fn touch_object(&self, bucket_name: &str, object_name: &str) -> EngineResult<()>;
-    
-    // --- Object Operations ---
-    
-    /// 存储（或更新）一个 Object 的元数据
-    async fn create_object_meta(&self, meta: &ObjectMeta) -> EngineResult<()>;
-    
-    /// 获取指定 Object 的元数据
-    async fn read_object_meta(
+    fn touch_object(
         &self,
         bucket_name: &str,
         object_name: &str,
-    ) -> EngineResult<ObjectMeta>;
-    
+    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
+
+    // --- Object Operations ---
+
+    /// 存储（或更新）一个 Object 的元数据
+    fn create_object_meta(
+        &self,
+        meta: &ObjectMeta,
+    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
+
+    /// 获取指定 Object 的元数据
+    fn read_object_meta(
+        &self,
+        bucket_name: &str,
+        object_name: &str,
+    ) -> impl std::future::Future<Output = EngineResult<ObjectMeta>> + Send;
+
     /// 删除一个 Object 的元数据
-    async fn delete_object_meta(&self, bucket_name: &str, object_name: &str) -> EngineResult<()>;
-    
+    fn delete_object_meta(
+        &self,
+        bucket_name: &str,
+        object_name: &str,
+    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
+
     /// 列出指定 Bucket 内的所有 Object 元数据
-    async fn list_objects_meta(&self, bucket_name: &str) -> EngineResult<Vec<ObjectMeta>>;
+    fn list_objects_meta(
+        &self,
+        bucket_name: &str,
+    ) -> impl std::future::Future<Output = EngineResult<Vec<ObjectMeta>>> + Send;
+
     /// 更新一个 object 的 last_update 字段
-    async fn touch_bucket(&self, bucket_name: &str) -> EngineResult<()>;
+    fn touch_bucket(
+        &self,
+        bucket_name: &str,
+    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
 }

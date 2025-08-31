@@ -1,6 +1,6 @@
 use crate::app_config;
 use crate::error::cli::CliError;
-use crate::http::auth::{Conditions, HttpMethod, Jwt, Permission};
+use crab_vault_auth::{Conditions, HttpMethod, Jwt, Permission};
 
 use chrono::Utc;
 use clap::error::ErrorKind;
@@ -157,7 +157,7 @@ fn verify_jwt() -> Result<(), CliError> {
         .unwrap();
 
     // 解码
-    let decoded = Jwt::<Permission>::decode_unchecked(token, &jwt_config).map_err(CliError::from)?;
+    let decoded = Jwt::<Permission>::decode_unchecked(token).map_err(CliError::from)?;
     let pretty_json = serde_json::to_string_pretty(&decoded).map_err(CliError::from)?;
 
     // 验证
