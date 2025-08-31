@@ -56,5 +56,5 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 #
-crab-vault-auth = { path = "crates/crab-vault-auth", version = "*" }
-crab-vault-engine = { path = "crates/crab-vault-engine", version = "*" }
+crab-vault-auth = { path = "crates/crab-vault-auth", version = "0.2.4" }
+crab-vault-engine = { path = "crates/crab-vault-engine", version = "0.2.4" }
