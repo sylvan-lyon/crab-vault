@@ -1,9 +1,5 @@
-use std::str::FromStr;
-
-use clap::error::ErrorKind;
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
-
-use crate::error::cli::CliError;
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
@@ -30,7 +26,7 @@ pub struct LoggerConfig {
     pub(super) dump_level: Option<LogLevel>,
 }
 
-#[derive(Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Default)]
+#[derive(Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Default, ValueEnum)]
 pub enum LogLevel {
     #[default]
     #[serde(alias = "trace", alias = "TRACE")]
@@ -111,25 +107,6 @@ impl From<tracing::Level> for LogLevel {
             tracing::Level::INFO => Self::Info,
             tracing::Level::WARN => Self::Warn,
             tracing::Level::ERROR => Self::Error,
-        }
-    }
-}
-
-impl FromStr for LogLevel {
-    type Err = CliError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "trace" => Ok(LogLevel::Trace),
-            "debug" => Ok(LogLevel::Debug),
-            "info" => Ok(LogLevel::Info),
-            "warn" => Ok(LogLevel::Warn),
-            "error" => Ok(LogLevel::Error),
-            _ => Err(CliError::new(
-                ErrorKind::InvalidValue,
-                "the value cannot be parsed as log level".to_string(),
-                None,
-            )),
         }
     }
 }

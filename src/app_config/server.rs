@@ -13,7 +13,7 @@ use crate::http::auth::JwtConfigBuilder;
 #[serde(deny_unknown_fields, default)]
 pub struct ServerConfig {
     pub(super) port: u16,
-    auth: AuthConfig,
+    pub(super) auth: AuthConfig,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -23,21 +23,21 @@ pub struct AuthConfig {
     ///
     /// 在编译规则时保证如果同一个路径下有多种公开方式时，采取最后指定的公开请求方法而非并集
     #[serde(default)]
-    pub path_rules: Vec<PathRule>,
+    pub(super) path_rules: Vec<PathRule>,
 
     /// jwt 鉴权相关设置
     #[serde(default)]
-    pub jwt_config: JwtConfigBuilder,
+    pub(super) jwt_config: JwtConfigBuilder,
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct PathRule {
     /// 路径的通配符，UNIX shell 通配符
-    pub pattern: String,
+    pub(super) pattern: String,
 
     /// 无需 token 即可访问的那些方法
     #[serde(default)]
-    pub public_methods: HashSet<HttpMethod>,
+    pub(super) public_methods: HashSet<HttpMethod>,
 }
 
 impl ServerConfig {

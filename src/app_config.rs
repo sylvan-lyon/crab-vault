@@ -122,6 +122,7 @@ impl AppConfig {
                     meta_source,
                     log_level,
                     dump_path,
+                    dump_level,
                 } = run_args;
 
                 if let Some(port) = port {
@@ -138,13 +139,14 @@ impl AppConfig {
 
                 if let Some(log_level) = log_level {
                     self.logger.level = log_level
-                        .parse()
-                        .map_err(|e: crate::error::cli::CliError| e.exit_now())
-                        .unwrap();
                 }
 
                 if let Some(dump_path) = dump_path {
                     self.logger.dump_path = Some(dump_path)
+                }
+
+                if let Some(dump_level) = dump_level {
+                    self.logger.dump_level = Some(dump_level)
                 }
             }
             CliCommand::Jwt(_) => {}
