@@ -1,8 +1,8 @@
 pub mod error;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, i64, sync::Arc};
 
-use base64::{prelude::BASE64_STANDARD_NO_PAD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use clap::ValueEnum;
 use glob::Pattern;
 use jsonwebtoken::*;
@@ -115,6 +115,66 @@ impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
         }
 
         Err(AuthError::TokenInvalid)
+    }
+
+    pub fn new(load: P) -> Self {
+        Self {
+            iss: None,
+            aud: vec![],
+            exp: i64::MAX,
+            nbf: 0,
+            iat: chrono::Utc::now().timestamp(),
+            jti: uuid::Uuid::new_v4().as_u128(),
+            payload: load,
+        }
+    }
+
+    #[inline(always)]
+    pub fn issue_as<T: ToString>(mut self, iss: T) -> Self {
+        self.iss = Some(iss.to_string());
+        self
+    }
+
+    #[inline(always)]
+    pub fn issue_as_option<T: ToString>(mut self, iss: Option<T>) -> Self {
+        self.iss = iss.map(|val| val.to_string());
+        self
+    }
+
+    #[inline(always)]
+    pub fn audiences<T: ToString>(mut self, aud: &[T]) -> Self {
+        self.aud = aud.iter().map(|aud| aud.to_string()).collect();
+        self
+    }
+
+    #[inline(always)]
+    pub fn expires_in(mut self, duration: chrono::Duration) -> Self {
+        self.exp = (chrono::Utc::now() + duration).timestamp();
+        self
+    }
+
+    #[inline(always)]
+    pub fn not_valid_in(mut self, duration: chrono::Duration) -> Self {
+        self.nbf = (chrono::Utc::now() + duration).timestamp();
+        self
+    }
+
+    #[inline(always)]
+    pub fn expires_at<T>(mut self, when: chrono::DateTime<T>) -> Self
+    where
+        T: chrono::TimeZone,
+    {
+        self.exp = when.timestamp();
+        self
+    }
+
+    #[inline(always)]
+    pub fn not_valid_till<T>(mut self, when: chrono::DateTime<T>) -> Self
+    where
+        T: chrono::TimeZone
+    {
+        self.nbf = when.timestamp();
+        self
     }
 }
 

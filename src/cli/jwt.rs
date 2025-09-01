@@ -2,11 +2,10 @@ use crate::app_config;
 use crate::error::cli::CliError;
 use crab_vault_auth::{Conditions, HttpMethod, Jwt, Permission};
 
-use chrono::Utc;
+use chrono::Duration;
 use clap::error::ErrorKind;
 use clap::{Args, Subcommand};
 use std::io::{self, Read};
-use uuid::Uuid;
 
 #[derive(Args)]
 pub struct JwtCommandAndArgs {
@@ -37,7 +36,7 @@ pub struct GenerateArgs {
 
     /// The issuer of this token (if set), if not provided, we'll randomly select one issuer from your configuration file, or make it `null`
     #[arg(long)]
-    pub issuer: Option<String>,
+    pub issue_as: Option<String>,
 
     /// The audiences of this token (if set), if not provided, we'll fetch audiences from your configuration file, default value of configuration file is an empty array
     #[arg(long, value_delimiter = ',')]
@@ -79,8 +78,8 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
         .unwrap();
     let validation_config = &jwt_config.validation;
 
-    let iss = if args.issuer.is_some() {
-        args.issuer
+    let iss = if args.issue_as.is_some() {
+        args.issue_as
     } else {
         validation_config.iss.as_ref().and_then(|issuers| {
             let issuers_vec: Vec<_> = issuers.iter().collect();
@@ -100,26 +99,36 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
             .unwrap_or_default()
     };
 
-    let iat = Utc::now().timestamp();
-    let nbf = iat + args.nbf_offset;
-    let exp = iat + args.exp_offset;
-
-    let claims = Jwt {
-        iss,
-        aud,
-        exp,
-        nbf,
-        iat,
-        jti: Uuid::new_v4().as_u128(),
-        payload: Permission {
-            operations: args.operations,
-            resource_pattern: args.resource_pattern,
-            conditions: Conditions {
-                max_size: args.max_size,
-                allowed_content_types: args.allowed_content_type,
-            },
+    let claims = Jwt::new(Permission {
+        operations: args.operations,
+        resource_pattern: args.resource_pattern,
+        conditions: Conditions {
+            max_size: args.max_size,
+            allowed_content_types: args.allowed_content_type,
         },
-    };
+    })
+    .issue_as_option(iss.as_ref())
+    .audiences(&aud)
+    .expires_in(
+        Duration::try_seconds(args.exp_offset)
+            .ok_or(CliError::new(
+                ErrorKind::ValueValidation,
+                format!("The offset is too big or small"),
+                None,
+            ))
+            .map_err(|e| e.exit_now())
+            .unwrap(),
+    )
+    .not_valid_in(
+        Duration::try_seconds(args.exp_offset)
+            .ok_or(CliError::new(
+                ErrorKind::ValueValidation,
+                format!("The offset is too big or small"),
+                None,
+            ))
+            .map_err(|e| e.exit_now())
+            .unwrap(),
+    );
 
     // 编码 JWT
     let token = Jwt::encode(&claims, &jwt_config)

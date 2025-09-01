@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "crab-vault"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -416,21 +416,23 @@ dependencies = [
 
 [[package]]
 name = "crab-vault-auth"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "axum",
  "base64 0.22.1",
+ "chrono",
  "clap",
  "glob",
  "jsonwebtoken",
  "serde",
  "serde_json",
  "thiserror",
+ "uuid",
 ]
 
 [[package]]
 name = "crab-vault-engine"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "axum",
  "chrono",

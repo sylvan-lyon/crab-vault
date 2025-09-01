@@ -1,6 +1,6 @@
 [package]
 name = "crab-vault-auth"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2024"
 description = "The auth sdk for crab vault."
 license = "MIT"
@@ -9,9 +9,11 @@ repository = "https://github.com/sylvan-lyon/crab-vault.git"
 [dependencies]
 axum.workspace = true
 base64.workspace = true
+chrono.workspace = true
 clap.workspace = true
 glob.workspace = true
 jsonwebtoken.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+uuid.workspace = true
