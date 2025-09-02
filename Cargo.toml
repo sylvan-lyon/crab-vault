@@ -32,7 +32,7 @@ tower = { version = "0.5", features = ["tokio"] }
 tower-http = { version = "0.6", features = ["trace", "timeout", "cors", "limit", "normalize-path"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uuid = { version = "1.18", features = ["v4"] }
+uuid = { version = "1.18", features = ["v4", "serde"] }
 
 [dependencies]
 axum = { workspace = true }
