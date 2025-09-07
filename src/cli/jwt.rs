@@ -1,6 +1,6 @@
 use crate::app_config;
 use crate::error::cli::CliError;
-use crab_vault_auth::{Conditions, HttpMethod, Jwt, Permission};
+use crab_vault_auth::{HttpMethod, Jwt, Permission};
 
 use chrono::Duration;
 use clap::error::ErrorKind;
@@ -99,36 +99,17 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
             .unwrap_or_default()
     };
 
-    let claims = Jwt::new(Permission {
-        operations: args.operations,
-        resource_pattern: args.resource_pattern,
-        conditions: Conditions {
-            max_size: args.max_size,
-            allowed_content_types: args.allowed_content_type,
-        },
-    })
-    .issue_as_option(iss.as_ref())
-    .audiences(&aud)
-    .expires_in(
-        Duration::try_seconds(args.exp_offset)
-            .ok_or(CliError::new(
-                ErrorKind::ValueValidation,
-                format!("The offset is too big or small"),
-                None,
-            ))
-            .map_err(|e| e.exit_now())
-            .unwrap(),
-    )
-    .not_valid_in(
-        Duration::try_seconds(args.exp_offset)
-            .ok_or(CliError::new(
-                ErrorKind::ValueValidation,
-                format!("The offset is too big or small"),
-                None,
-            ))
-            .map_err(|e| e.exit_now())
-            .unwrap(),
-    );
+    let payload = Permission::new_minimum()
+        .permit_method(args.operations)
+        .permit_access_url(args.resource_pattern)
+        .restrict_maximum_size_option(args.max_size)
+        .permit_content_type(args.allowed_content_type);
+
+    let claims = Jwt::new(payload)
+        .issue_as_option(iss.as_ref())
+        .audiences(&aud)
+        .expires_in(Duration::seconds(args.exp_offset))
+        .not_valid_in(Duration::seconds(args.nbf_offset));
 
     // 编码 JWT
     let token = Jwt::encode(&claims, &jwt_config)

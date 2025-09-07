@@ -16,7 +16,7 @@ use crab_vault_engine::{error::EngineResult, *, DataEngine, MetaEngine};
 
 // --- Bucket Handlers ---
 #[debug_handler]
-pub async fn create_bucket(
+pub(super) async fn create_bucket(
     State(state): State<ApiState>,
     Path(bucket_name): Path<String>,
     Json(payload): Json<serde_json::Value>, // User meta for the bucket
@@ -36,7 +36,7 @@ pub async fn create_bucket(
 }
 
 #[debug_handler]
-pub async fn delete_bucket(
+pub(super) async fn delete_bucket(
     State(state): State<ApiState>,
     Path(bucket_name): Path<String>,
 ) -> EngineResult<StatusCode> {
@@ -47,7 +47,7 @@ pub async fn delete_bucket(
 }
 
 #[debug_handler]
-pub async fn head_bucket(
+pub(super) async fn head_bucket(
     State(state): State<ApiState>,
     Path(bucket_name): Path<String>,
 ) -> EngineResult<Response> {
@@ -57,7 +57,7 @@ pub async fn head_bucket(
 }
 
 #[debug_handler]
-pub async fn patch_bucket_meta(
+pub(super) async fn patch_bucket_meta(
     State(state): State<ApiState>,
     Path(bucket_name): Path<String>,
     Json(payload): Json<serde_json::Value>,
@@ -71,7 +71,7 @@ pub async fn patch_bucket_meta(
 }
 
 #[debug_handler]
-pub async fn list_buckets_meta(State(state): State<ApiState>) -> EngineResult<Response> {
+pub(super) async fn list_buckets_meta(State(state): State<ApiState>) -> EngineResult<Response> {
     let res = state.meta_src.list_buckets_meta().await?;
     let res = res
         .into_iter()
@@ -84,7 +84,7 @@ pub async fn list_buckets_meta(State(state): State<ApiState>) -> EngineResult<Re
 // --- Object Handlers ---
 
 #[debug_handler]
-pub async fn upload_object(
+pub(super) async fn upload_object(
     State(state): State<ApiState>,
     meta_extractor: NewObjectMetaExtractor,
     RestrictedBytes(data): RestrictedBytes,
@@ -109,7 +109,7 @@ pub async fn upload_object(
 }
 
 #[debug_handler]
-pub async fn get_object(
+pub(super) async fn get_object(
     State(state): State<ApiState>,
     Path((bucket_name, object_name)): Path<(String, String)>,
 ) -> EngineResult<ObjectMetaResponse> {
@@ -127,7 +127,7 @@ pub async fn get_object(
 }
 
 #[debug_handler]
-pub async fn head_object(
+pub(super) async fn head_object(
     State(state): State<ApiState>,
     Path((bucket_name, object_name)): Path<(String, String)>,
 ) -> EngineResult<ObjectMetaResponse> {
@@ -140,7 +140,7 @@ pub async fn head_object(
 }
 
 #[debug_handler]
-pub async fn patch_object_meta(
+pub(super) async fn patch_object_meta(
     State(state): State<ApiState>,
     Path((bucket_name, object_name)): Path<(String, String)>,
     Json(payload): Json<serde_json::Value>,
@@ -162,7 +162,7 @@ pub async fn patch_object_meta(
 }
 
 #[debug_handler]
-pub async fn delete_object(
+pub(super) async fn delete_object(
     State(state): State<ApiState>,
     Path((bucket_name, object_name)): Path<(String, String)>,
 ) -> EngineResult<StatusCode> {
@@ -180,11 +180,16 @@ pub async fn delete_object(
 }
 
 #[debug_handler]
-pub async fn list_objects_meta(
+pub(super) async fn list_objects_meta(
     State(state): State<ApiState>,
     Path(bucket_name): Path<String>,
 ) -> EngineResult<Response> {
     let res = state.meta_src.list_objects_meta(&bucket_name).await?;
 
     Ok((StatusCode::OK, axum::Json(res)).into_response())
+}
+
+#[debug_handler]
+pub(super) async fn health() -> Response {
+    StatusCode::NO_CONTENT.into_response()
 }

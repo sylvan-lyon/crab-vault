@@ -13,7 +13,7 @@ use axum::{
     },
     response::{IntoResponse, Response},
 };
-use crab_vault_auth::{error::AuthError, HttpMethod, Jwt, JwtConfig, Permission};
+use crab_vault_auth::{HttpMethod, Jwt, JwtConfig, Permission, error::AuthError};
 use glob::Pattern;
 use tokio::sync::OnceCell;
 use tower::{Layer, Service};
@@ -182,7 +182,7 @@ async fn extract_and_validate_token(
     }
 
     // 5. 检查资源路径匹配和请求方法
-    if !jwt.payload.can_perform(method) || !jwt.payload.can_access(path) {
+    if !jwt.payload.can_perform_method(method) || !jwt.payload.can_access(path) {
         return Err(AuthError::InsufficientPermissions.into());
     }
 

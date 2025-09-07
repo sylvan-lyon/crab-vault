@@ -46,7 +46,6 @@ fn setup_config(
         decoding_key: decoding_key_map,
         header: Header::new(alg),
         validation,
-        uuid_generation: Uuid::new_v4
     }
 }
 
@@ -214,8 +213,8 @@ fn test_decode_unchecked() {
 fn test_permission_logic() {
     // 1. Root permission
     let root_perm = Permission::new_root();
-    assert!(root_perm.can_perform(HttpMethod::Get));
-    assert!(root_perm.can_perform(HttpMethod::Post));
+    assert!(root_perm.can_perform_method(HttpMethod::Get));
+    assert!(root_perm.can_perform_method(HttpMethod::Post));
     assert!(root_perm.can_access("/any/path/is/ok"));
     assert!(root_perm.check_size(u64::MAX));
     assert!(root_perm.check_content_type("application/anything"));
@@ -223,17 +222,15 @@ fn test_permission_logic() {
     // 2. Specific permissions
     let specific_perm = Permission {
         operations: vec![HttpMethod::Get, HttpMethod::Post],
-        resource_pattern: "/users/*".to_string(),
-        conditions: crab_vault_auth::Conditions {
-            max_size: Some(1024),
-            allowed_content_types: vec!["image/png".to_string(), "image/jpeg".to_string()],
-        },
+        resource_pattern: Some("/users/*".to_string()),
+        max_size: Some(1024),
+        allowed_content_types: vec!["image/png".to_string(), "image/jpeg".to_string()],
     };
 
     // can_perform
-    assert!(specific_perm.can_perform(HttpMethod::Get));
-    assert!(specific_perm.can_perform(HttpMethod::Post));
-    assert!(!specific_perm.can_perform(HttpMethod::Delete));
+    assert!(specific_perm.can_perform_method(HttpMethod::Get));
+    assert!(specific_perm.can_perform_method(HttpMethod::Post));
+    assert!(!specific_perm.can_perform_method(HttpMethod::Delete));
 
     // can_access
     assert!(specific_perm.can_access("/users/123"));

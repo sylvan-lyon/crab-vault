@@ -3,7 +3,6 @@ use clap::error::ErrorKind;
 use crab_vault_auth::JwtConfig;
 use jsonwebtoken::*;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::error::cli::{CliError, MultiCliError};
 
@@ -99,7 +98,6 @@ impl JwtConfigBuilder {
             decoding_key,
             header: Header::new(self.encoding.algorithm),
             validation: self.validation.into(),
-            uuid_generation: Uuid::new_v4
         };
 
         if !res.decoding_key.contains_key(&self.encoding.algorithm) {

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::{Router, routing::MethodRouter};
+use axum::{routing::MethodRouter, Router};
 
 use crate::http::middleware::auth::AuthLayer;
 
@@ -42,9 +42,14 @@ pub async fn build_router() -> Router<ApiState> {
         .get(list_objects_meta)
         .head(head_bucket);
 
+    let health = MethodRouter::new()
+        .get(health)
+        .head(health);
+
     Router::new()
         .route("/", axum::routing::get(list_buckets_meta))
         .route("/{bucket_name}", bucket_router)
         .route("/{bucket_name}/{*object_name}", object_router)
         .layer(AuthLayer::new())
+        .route("/health", health)
 }
