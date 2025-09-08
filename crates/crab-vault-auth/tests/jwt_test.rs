@@ -221,7 +221,7 @@ fn test_permission_logic() {
 
     // 2. Specific permissions
     let specific_perm = Permission {
-        operations: vec![HttpMethod::Get, HttpMethod::Post],
+        methods: vec![HttpMethod::Get, HttpMethod::Post],
         resource_pattern: Some("/users/*".to_string()),
         max_size: Some(1024),
         allowed_content_types: vec!["image/png".to_string(), "image/jpeg".to_string()],

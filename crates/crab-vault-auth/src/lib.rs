@@ -115,7 +115,7 @@ pub struct Permission {
     /// 允许的操作列表。
     ///
     /// 定义此令牌授权执行的具体 HTTP 方法。
-    pub operations: Vec<HttpMethod>,
+    pub methods: Vec<HttpMethod>,
 
     /// 资源路径模式。
     ///
@@ -318,7 +318,7 @@ impl Permission {
     /// - MIME: **所有**
     pub fn new_root() -> Self {
         Self {
-            operations: vec![HttpMethod::All],
+            methods: vec![HttpMethod::All],
             resource_pattern: Some("*".to_string()),
             max_size: None,
             allowed_content_types: vec!["*".to_string()],
@@ -335,7 +335,7 @@ impl Permission {
     /// - MIME: **所有都不行**
     pub fn new_minimum() -> Self {
         Self {
-            operations: vec![],
+            methods: vec![],
             resource_pattern: None,
             max_size: Some(0),
             allowed_content_types: vec![],
@@ -347,7 +347,7 @@ impl Permission {
     /// 注意这会**更换**，而不是添加
     #[inline]
     pub fn permit_method(mut self, methods: Vec<HttpMethod>) -> Self {
-        self.operations = methods;
+        self.methods = methods;
         self
     }
 
@@ -398,7 +398,7 @@ impl Permission {
     where
         T: Into<HttpMethod>,
     {
-        self.operations.contains(&HttpMethod::All) || self.operations.contains(&method.into())
+        self.methods.contains(&HttpMethod::All) || self.methods.contains(&method.into())
     }
 
     /// 检查此权限是否能访问给定的资源路径。
@@ -472,6 +472,42 @@ impl From<axum::http::Method> for HttpMethod {
             axum::http::Method::TRACE => Self::Trace,
             axum::http::Method::CONNECT => Self::Connect,
             _ => Self::Other,
+        }
+    }
+}
+
+impl HttpMethod {
+    /// 判断一个方法是否安全，根据
+    ///  [MDN](https://developer.mozilla.org/zh-CN/docs/Glossary/Safe/HTTP) 以及 [rfc7231](https://datatracker.ietf.org/doc/html/rfc7231#section-4.2.1) 对于安全的定义
+    ///
+    /// 一个方法是否安全取决于该方法的请求在被服务器响应后，<u>**服务器的状态是否改变**</u>
+    /// 
+    /// 或者说一个方法安不安全取决于是否蕴含着**写入请求**
+    ///
+    /// 所以，对于 [`OPTIONS`](HttpMethod::Options) 这类在通常认知中
+    /// 会造成服务器信息暴露等问题的方法，仍然认为是安全的
+    ///
+    ///
+    /// - 如果一个方法是只读的，如 [`HEAD`](HttpMethod::Head)，[`GET`](HttpMethod::Get) 等，那他就是安全的
+    /// - 如果一个方法有写入的含义，如 [`PUT`](HttpMethod::Put)，[`DELETE`](HttpMethod::Delete) 等，那么就不安全
+    /// 
+    /// 同时，在这里，由于有两个例外：[`HttpMethod::Other`] 和 [`HttpMethod::All`] 这两个标记
+    /// 
+    /// 它们两个一个代表其他请求（rfc规范之外的），一个代表所有的请求，包括 rfc 规范之外的
+    pub fn safe(self) -> bool {
+        match self {
+            HttpMethod::Connect
+            | HttpMethod::Get
+            | HttpMethod::Head
+            | HttpMethod::Options
+            | HttpMethod::Trace => true,
+            // unsafe operations，这些操作会导致内容改变
+            HttpMethod::Post
+            | HttpMethod::Put
+            | HttpMethod::Patch
+            | HttpMethod::Delete
+            | HttpMethod::Other
+            | HttpMethod::All => false,
         }
     }
 }
