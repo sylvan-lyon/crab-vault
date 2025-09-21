@@ -1,6 +1,6 @@
 [package]
 name = "crab-vault-logger"
-version = "0.2.10"
+version = "0.2.11"
 edition = "2024"
 description = "The logger of crab vault"
 license = "MIT"
@@ -14,4 +14,4 @@ serde.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 #
-crab-vault-utils = { path = "../crab-vault-utils", version = "0.2.10"}
+crab-vault-utils = { path = "../crab-vault-utils", version = "0.2.11"}

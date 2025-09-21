@@ -1,6 +1,6 @@
 [package]
 name = "crab-vault"
-version = "0.2.10"
+version = "0.2.11"
 edition = "2024"
 description = "An object storage service written in rust."
 license = "MIT"
@@ -58,7 +58,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 #
-crab-vault-auth = { path = "crates/crab-vault-auth", version = "0.2.10" }
-crab-vault-engine = { path = "crates/crab-vault-engine", version = "0.2.10" }
-crab-vault-utils = { path = "crates/crab-vault-utils", version = "0.2.10" }
-crab-vault-logger = { path= "crates/crab-vault-logger", version = "0.2.10"}
+crab-vault-auth = { path = "crates/crab-vault-auth", version = "0.2.11" }
+crab-vault-engine = { path = "crates/crab-vault-engine", version = "0.2.11" }
+crab-vault-utils = { path = "crates/crab-vault-utils", version = "0.2.11" }
+crab-vault-logger = { path= "crates/crab-vault-logger", version = "0.2.11"}
