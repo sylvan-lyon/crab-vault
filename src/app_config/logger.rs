@@ -1,4 +1,4 @@
-use clap::ValueEnum;
+use crab_vault_logger::LogLevel;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]
@@ -24,21 +24,6 @@ pub struct LoggerConfig {
 
     /// 日志文件的最低输出等级
     pub(super) dump_level: Option<LogLevel>,
-}
-
-#[derive(Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Default, ValueEnum)]
-pub enum LogLevel {
-    #[default]
-    #[serde(alias = "trace", alias = "TRACE")]
-    Trace,
-    #[serde(alias = "debug", alias = "DEBUG")]
-    Debug,
-    #[serde(alias = "info", alias = "INFO")]
-    Info,
-    #[serde(alias = "warn", alias = "WARN")]
-    Warn,
-    #[serde(alias = "error", alias = "ERROR")]
-    Error,
 }
 
 impl Default for LoggerConfig {
@@ -95,18 +80,5 @@ impl LoggerConfig {
 
     pub fn with_thread(&self) -> bool {
         self.with_thread
-    }
-}
-
-impl From<tracing::Level> for LogLevel {
-    #[inline(always)]
-    fn from(value: tracing::Level) -> Self {
-        match value {
-            tracing::Level::TRACE => Self::Trace,
-            tracing::Level::DEBUG => Self::Debug,
-            tracing::Level::INFO => Self::Info,
-            tracing::Level::WARN => Self::Warn,
-            tracing::Level::ERROR => Self::Error,
-        }
     }
 }

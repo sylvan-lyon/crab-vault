@@ -1,27 +1,24 @@
 use std::fmt::Display;
 
+use crate::bitmap::Bitmap;
+
 pub const RESET: &str = "\x1B[0m";
 pub const ESCAPE_BEGIN: &str = "\x1B[";
 pub const ESCAPE_OVER: &str = "m";
 
-pub const BOLD: u8 = 1;
-pub const DIMMED: u8 = 2;
-pub const ITALIC: u8 = 3;
-pub const UNDERLINE: u8 = 4;
-pub const BLINK_SLOWLY: u8 = 5;
-pub const BLINK_RAPIDLY: u8 = 6;
-pub const REVERSE: u8 = 7;
-pub const HIDDEN: u8 = 8;
-pub const STRIKE_THROUGH: u8 = 9;
-
-#[derive(Clone, Copy, Default)]
-pub struct Bitmap {
-    val: u16,
-}
+pub const BOLD: usize = 1;
+pub const DIMMED: usize = 2;
+pub const ITALIC: usize = 3;
+pub const UNDERLINE: usize = 4;
+pub const BLINK_SLOWLY: usize = 5;
+pub const BLINK_RAPIDLY: usize = 6;
+pub const REVERSE: usize = 7;
+pub const HIDDEN: usize = 8;
+pub const STRIKE_THROUGH: usize = 9;
 
 #[derive(Clone, Copy, Default)]
 pub struct FontStyle {
-    options: Bitmap,
+    options: Bitmap<u16>,
 }
 
 #[derive(Clone, Copy)]
@@ -82,42 +79,6 @@ impl<'a> Display for AnsiString<'a> {
     }
 }
 
-impl From<u16> for Bitmap {
-    fn from(val: u16) -> Self {
-        Self { val }
-    }
-}
-
-impl From<Bitmap> for u16 {
-    fn from(value: Bitmap) -> u16 {
-        value.val
-    }
-}
-
-impl Bitmap {
-    fn new() -> Self {
-        Self { val: 0 }
-    }
-
-    fn set(&mut self, idx: u8, set: bool) {
-        debug_assert!((idx as usize) < std::mem::size_of::<u16>() * 8);
-        if set {
-            self.val |= 1 << idx
-        } else {
-            self.val &= !(1 << idx)
-        }
-    }
-
-    fn get(self, idx: usize) -> bool {
-        debug_assert!(idx < std::mem::size_of::<u16>() * 8);
-        (self.val & (1 << idx)) != 0
-    }
-
-    fn merge(self, rhs: Bitmap) -> Bitmap {
-        Bitmap::from(self.val | <Bitmap as Into<u16>>::into(rhs))
-    }
-}
-
 impl FontStyle {
     pub fn new() -> Self {
         Self {
@@ -127,7 +88,7 @@ impl FontStyle {
 
     pub fn merge(self, rhs: FontStyle) -> FontStyle {
         Self {
-            options: self.options.merge(rhs.options),
+            options: self.options | rhs.options,
         }
     }
 

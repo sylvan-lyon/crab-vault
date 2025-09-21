@@ -388,7 +388,7 @@ dependencies = [
 
 [[package]]
 name = "crab-vault"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -398,6 +398,8 @@ dependencies = [
  "config",
  "crab-vault-auth",
  "crab-vault-engine",
+ "crab-vault-logger",
+ "crab-vault-utils",
  "glob",
  "jsonwebtoken",
  "rand",
@@ -416,7 +418,7 @@ dependencies = [
 
 [[package]]
 name = "crab-vault-auth"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -432,7 +434,7 @@ dependencies = [
 
 [[package]]
 name = "crab-vault-engine"
-version = "0.2.9"
+version = "0.2.10"
 dependencies = [
  "axum",
  "chrono",
@@ -441,6 +443,23 @@ dependencies = [
  "thiserror",
  "tokio",
 ]
+
+[[package]]
+name = "crab-vault-logger"
+version = "0.2.10"
+dependencies = [
+ "chrono",
+ "clap",
+ "crab-vault-utils",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "crab-vault-utils"
+version = "0.2.10"
 
 [[package]]
 name = "crunchy"

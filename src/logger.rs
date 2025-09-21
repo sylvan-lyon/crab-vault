@@ -1,6 +1,4 @@
-mod json;
-mod pretty;
-
+use crab_vault_logger::{json::JsonLogger, pretty::PrettyLogger};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::app_config;
@@ -8,7 +6,7 @@ use crate::app_config;
 pub fn init() {
     let logger_config = app_config::logger();
     let logger = tracing_subscriber::registry().with(
-        pretty::PrettyLogger::new(logger_config.level())
+        PrettyLogger::new(logger_config.level())
             .with_ansi(logger_config.with_ansi())
             .with_file(logger_config.with_file())
             .with_target(logger_config.with_target())
@@ -16,7 +14,7 @@ pub fn init() {
     );
 
     if logger_config.dump_path().is_some() {
-        let json = json::JsonLogger::new(
+        let json = JsonLogger::new(
             logger_config.dump_path().unwrap(),
             logger_config.dump_level().unwrap(),
         );

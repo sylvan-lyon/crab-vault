@@ -1,6 +1,5 @@
 use clap::Args;
-
-use crate::app_config::logger::LogLevel;
+use crab_vault_logger::LogLevel;
 
 #[derive(Args)]
 pub struct RunArgs {

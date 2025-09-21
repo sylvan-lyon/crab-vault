@@ -6,9 +6,9 @@ use std::fs;
 use tracing::span;
 use tracing_subscriber::Layer;
 
-use crate::app_config::logger::LogLevel;
+use crate::LogLevel;
 
-pub(super) struct JsonLogger {
+pub struct JsonLogger {
     with_target: bool,
     with_file: bool,
     with_thread: bool,
@@ -102,7 +102,7 @@ where
 }
 
 impl JsonLogger {
-    pub(super) fn new<P: AsRef<Path>>(dump_path: P, min_level: LogLevel) -> Result<Self, std::io::Error> {
+    pub fn new<P: AsRef<Path>>(dump_path: P, min_level: LogLevel) -> Result<Self, std::io::Error> {
         let log_path = dump_path.as_ref().to_path_buf();
         fs::create_dir_all(&log_path)?;
 
@@ -118,17 +118,17 @@ impl JsonLogger {
         })
     }
 
-    pub(super) fn with_target(mut self, enabled: bool) -> Self {
+    pub fn with_target(mut self, enabled: bool) -> Self {
         self.with_target = enabled;
         self
     }
 
-    pub(super) fn with_file(mut self, enabled: bool) -> Self {
+    pub fn with_file(mut self, enabled: bool) -> Self {
         self.with_file = enabled;
         self
     }
 
-    pub(super) fn with_thread(mut self, enabled: bool) -> Self {
+    pub fn with_thread(mut self, enabled: bool) -> Self {
         self.with_thread = enabled;
         self
     }

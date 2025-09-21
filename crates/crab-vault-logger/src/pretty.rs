@@ -1,15 +1,15 @@
 use chrono::Local;
 
-use crab_vault::color::{
+use crab_vault_utils::color::{
     AnsiColor::{self, *},
     AnsiString, AnsiStyle, FontStyle,
 };
 use tracing::span;
 use tracing_subscriber::Layer;
 
-use crate::app_config::logger::LogLevel;
+use crate::LogLevel;
 
-pub(super) struct PrettyLogger {
+pub struct PrettyLogger {
     with_target: bool,
     with_ansi: bool,
     with_file: bool,
@@ -260,7 +260,7 @@ impl PrettyLogger {
 }
 
 impl PrettyLogger {
-    pub(super) fn new(min_level: LogLevel) -> Self {
+    pub fn new(min_level: LogLevel) -> Self {
         Self {
             with_target: true,
             with_ansi: true,
@@ -270,22 +270,22 @@ impl PrettyLogger {
         }
     }
 
-    pub(super) fn with_target(mut self, enabled: bool) -> Self {
+    pub fn with_target(mut self, enabled: bool) -> Self {
         self.with_target = enabled;
         self
     }
 
-    pub(super) fn with_ansi(mut self, enabled: bool) -> Self {
+    pub fn with_ansi(mut self, enabled: bool) -> Self {
         self.with_ansi = enabled;
         self
     }
 
-    pub(super) fn with_file(mut self, enabled: bool) -> Self {
+    pub fn with_file(mut self, enabled: bool) -> Self {
         self.with_file = enabled;
         self
     }
 
-    pub(super) fn with_thread(mut self, enabled: bool) -> Self {
+    pub fn with_thread(mut self, enabled: bool) -> Self {
         self.with_thread = enabled;
         self
     }
