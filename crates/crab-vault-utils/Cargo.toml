@@ -2,7 +2,7 @@
 name = "crab-vault-utils"
 version = "0.2.10"
 edition = "2024"
-description = "The engine of crab vault"
+description = "All the utils of crab vault"
 license = "MIT"
 repository = "https://github.com/sylvan-lyon/crab-vault.git"
 
