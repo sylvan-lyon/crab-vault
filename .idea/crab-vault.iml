@@ -6,6 +6,8 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/crab-vault-engine/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/crab-vault-auth/tests" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/crab-vault-logger/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/crab-vault-utils/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

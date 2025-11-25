@@ -53,7 +53,7 @@ where
             }
         };
 
-        if !permission.check_size(body_bytes.len() as u64) {
+        if !permission.compile().check_size(body_bytes.len()) {
             return Err(ApiError::BodyTooLarge.into_response());
         }
 

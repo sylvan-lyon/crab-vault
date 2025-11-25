@@ -1,59 +1,20 @@
-//! # JSON Web Token (JWT) Authentication Library
-//!
-//! 这是一个基于 `jsonwebtoken` crate 封装的 JWT 认证模块。
-//! 它提供了灵活的 JWT 生成、解码、验证以及基于声明的权限控制功能。
-//!
-//! ## 主要特性
-//!
-//! - **强类型 JWT**: 通过泛型 `Jwt<P>` 支持自定义的载荷 (Payload)。
-//! - **流畅的构建器模式**: 链式调用方法轻松构建 JWT 声明。
-//! - **灵活的配置**: 支持多种签名算法，便于密钥轮换。
-//! - **集成的错误处理**: `AuthError` 枚举与 `axum` 的 `IntoResponse` 无缝集成。
-//! - **基于声明的权限**: 内置 `Permission` 结构，支持基于 Glob 模式的资源和操作权限控制。
-//!
-//! ## 快速上手
-//!
-//! ```rust,ignore
-//! // 1. 定义你的载荷
-//! #[derive(Serialize, Deserialize)]
-//! struct MyPayload {
-//!     user_id: u32,
-//!     permissions: Vec<Permission>,
-//! }
-//!
-//! // 2. 创建配置
-//! let config = JwtConfig {
-//!     // ... 设置 encoding_key, decoding_key, header, validation
-//! };
-//!
-//! // 3. 创建并签发 Token
-//! let payload = MyPayload { /* ... */ };
-//! let claims = Jwt::new(payload)
-//!     .issue_as("my-app")
-//!     .expires_in(chrono::Duration::hours(1));
-//!
-//! let token = Jwt::encode(&claims, &config)?;
-//!
-//! // 4. 在 Axum Handler 中解码和验证
-//! async fn protected_route(
-//!     State(config): State<Arc<JwtConfig>>,
-//!     TypedHeader(Authorization(bearer)): TypedHeader<Authorization<Bearer>>,
-//! ) -> Result<Json<MyPayload>, AuthError> {
-//!     let decoded = Jwt::decode::<MyPayload>(bearer.token(), &config)?;
-//!     Ok(Json(decoded.payload))
-//! }
-//! ```
-
 pub mod error;
 
-use std::{collections::HashMap, sync::Arc};
-
-use base64::{Engine, prelude::BASE64_STANDARD_NO_PAD};
 use clap::ValueEnum;
-use glob::Pattern;
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{EncodingKey, Header};
 use serde::{Deserialize, Serialize};
+use std::vec;
 use uuid::Uuid;
+use validator::{Validate, ValidationError};
+
+#[cfg(feature = "server-side")]
+use base64::Engine;
+#[cfg(feature = "server-side")]
+use glob::Pattern;
+#[cfg(feature = "server-side")]
+use jsonwebtoken::{DecodingKey, Validation};
+#[cfg(feature = "server-side")]
+use std::collections::HashMap;
 
 use crate::error::AuthError;
 
@@ -61,21 +22,22 @@ use crate::error::AuthError;
 ///
 /// 建议在应用启动时创建此结构，并使用 `Arc` 在多个线程间共享。
 pub struct JwtConfig {
+    /// JWT 的头部 (`Header`)。定义了所使用的算法 (`alg`) 和类型 (`typ`, 通常是 "JWT" 或者不写)。
+    pub header: Header,
+
     /// 用于签发 JWT 的密钥。
     pub encoding_key: EncodingKey,
 
     /// 用于验证 JWT 的密钥映射。
     ///
-    /// `HashMap` 的键是签名算法 (`Algorithm`)，值是对应的解码密钥 (`DecodingKey`)。
-    /// 这允许应用同时支持多种算法，例如在进行密钥轮换或算法迁移时。
-    pub decoding_key: HashMap<Algorithm, DecodingKey>,
-
-    /// JWT 的头部 (`Header`)。定义了所使用的算法 (`alg`) 和类型 (`typ`, 通常是 "JWT")。
-    pub header: Header,
+    /// [`HashMap`] 的键是签发者 iss，值是 kid 和 对应的轮换密钥 (kid [`DecodingKey`])。
+    #[cfg(feature = "server-side")]
+    pub decoding_key: HashMap<String, HashMap<String, DecodingKey>>,
 
     /// JWT 的验证规则。
     ///
     /// 用于配置如何验证 `exp`, `nbf`, `iss`, `aud` 等标准声明。
+    #[cfg(feature = "server-side")]
     pub validation: Validation,
 }
 
@@ -83,11 +45,12 @@ pub struct JwtConfig {
 ///
 /// 泛型参数 `P` 代表自定义的载荷 (Payload) 结构体。
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Jwt<P> {
-    /// (Issuer) 签发者。可选。
-    pub iss: Option<String>,
+    /// (Issuer) 签发者
+    pub iss: String,
 
-    /// (Audience) 受众。可以是一个或多个，没有也行。
+    /// (Audience) 受众。可以是一个或多个。
     pub aud: Vec<String>,
 
     /// (Expiration Time) 过期时间。Unix 时间戳。
@@ -103,13 +66,19 @@ pub struct Jwt<P> {
     pub jti: Uuid,
 
     /// 自定义的载荷数据。
-    /// `#[serde(flatten)]` 会将 `payload` 的字段直接嵌入到 JWT 的顶层。
-    #[serde(flatten)]
-    pub payload: P,
+    pub lad: P,
 }
 
 /// JWT 令牌的载荷 (Payload) 中用于权限控制的部分。
-#[derive(Serialize, Deserialize, Clone, Debug)]
+///
+/// 因为这个 [`Permission`] 是每一个令牌中都有的，
+///
+/// 且一个令牌对应一次请求，一次请求对应一次操作，而这又是一个超级短期的令牌，
+///
+/// 所以我认为没有必要缓存校验时生成的 [`glob Pattern`](Pattern)。
+///
+/// 如果需要多次确认这个 [`Permission`] 能不能访问某一个数据，可以自己编译这个 glob 表达式。
+#[derive(Serialize, Deserialize, Validate, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Permission {
     /// 允许的操作列表。
@@ -121,17 +90,30 @@ pub struct Permission {
     ///
     /// 定义此令牌可以访问的资源路径，支持通配符 `*` 和 `?` (Glob 模式)。
     /// 例如: `/users/*` 或 `/files/???.txt`。
+    /// 如果是 None，那么表示这个令牌没有任何对象的操作权限
+    #[validate(length(max = 128))]
     pub resource_pattern: Option<String>,
 
     /// 允许上传的最大对象大小 (字节)。
     ///
     /// `None` 表示没有限制。
-    pub max_size: Option<u64>,
+    pub max_size: Option<usize>,
 
     /// 允许的内容类型 (MIME types)。
     ///
     /// 支持通配符，例如 `image/*` 或 `*`。
+    #[validate(custom(function = "Self::validate_content_type_pattern"))]
     pub allowed_content_types: Vec<String>,
+}
+
+#[cfg(feature = "server-side")]
+pub struct CompiledPermission {
+    pub methods: Vec<HttpMethod>,
+    pub resource_pattern: Option<String>,
+    pub max_size: Option<usize>,
+    pub allowed_content_types: Vec<String>,
+    resource_pattern_cache: Option<Pattern>,
+    allowed_content_types_cache: Vec<Pattern>,
 }
 
 /// HTTP 操作方法枚举。
@@ -156,126 +138,43 @@ pub enum HttpMethod {
 }
 
 impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
-    /// 使用给定的配置将 JWT 声明编码为字符串形式的 Token。
-    #[inline]
-    pub fn encode(claims: &Jwt<P>, config: &JwtConfig) -> Result<String, AuthError> {
-        Ok(jsonwebtoken::encode(
-            &config.header,
-            claims,
-            &config.encoding_key,
-        )?)
-    }
-
-    /// 使用给定的配置解码并验证一个字符串形式的 Token。
-    ///
-    /// 此函数会执行完整的验证流程，包括：
-    /// 1. 检查签名是否有效。
-    /// 2. 验证 `exp` 和 `nbf` 时间戳。
-    /// 3. 根据 `config.validation` 中的设置验证 `iss` 和 `aud`。
-    pub fn decode(token: &str, config: &JwtConfig) -> Result<Jwt<P>, AuthError> {
-        let header = jsonwebtoken::decode_header(token)?;
-        let key = config
-            .decoding_key
-            .get(&header.alg)
-            .ok_or(AuthError::InvalidAlgorithm(header.alg))?;
-        Ok(jsonwebtoken::decode::<Jwt<P>>(token, key, &config.validation)?.claims)
-    }
-
-    /// **[不安全]** 在不验证签名的情况下解码 JWT 的载荷。
-    ///
-    /// # 警告
-    ///
-    /// **绝对不要**相信此函数返回的数据！因为它**没有验证** JWT 的签名。
-    /// 这意味着任何人都可以伪造这个 JWT 的内容。
-    ///
-    /// 此函数仅应用于需要查看 Token 内容的调试或日志记录场景。
-    /// 在任何与安全相关的逻辑中，都**必须**使用 [`Jwt::decode`]。
-    pub fn decode_unchecked(token: &str) -> Result<serde_json::Value, AuthError> {
-        let mut parts = token.split('.');
-        let _header = parts.next();
-        let payload = parts.next().ok_or(AuthError::TokenInvalid)?;
-
-        let decoded_payload = BASE64_STANDARD_NO_PAD.decode(payload)?;
-        let json_value = serde_json::from_slice(&decoded_payload).map_err(Arc::new)?;
-
-        Ok(json_value)
-    }
-
     /// 创建一个新的 `Jwt` 实例，并填入默认值。
     ///
     /// 默认值:
     /// - `iss`: `None`
     /// - `aud`: 空 `Vec`
-    /// - `exp`: `i32::MAX` (永不过期, 其实是 UNIX 时间戳能表示的上限)
+    /// - `exp`: `一小时后`
     /// - `nbf`: `0` (立即生效)
     /// - `iat`: 当前时间的 Unix 时间戳
     /// - `jti`: 一个使用 [`Uuid::new_v4`] 新生成的 [`Uuid`]
     #[inline]
-    pub fn new(payload: P) -> Self {
+    pub fn new(iss: String, aud: Vec<String>, payload: P) -> Self {
+        let now = chrono::Utc::now().timestamp();
         Self {
-            iss: None,
-            aud: vec![],
-            exp: i32::MAX as i64,
-            nbf: 0,
-            iat: chrono::Utc::now().timestamp(),
+            iss,
+            aud,
+            exp: now + 3600,
+            nbf: now,
+            iat: now,
             jti: Uuid::new_v4(),
-            payload,
+            lad: payload,
         }
     }
 
-    /// 设置 JWT 的签发者 (`iss`)。
+    /// 使用给定的配置将 JWT 声明编码为字符串形式的 Token。
     #[inline]
-    pub fn issue_as<T>(mut self, iss: T) -> Self
-    where
-        T: Into<String>,
-    {
-        self.iss = Some(iss.into());
-        self
+    pub fn encode(token: &Jwt<P>, config: &JwtConfig) -> Result<String, AuthError> {
+        Ok(jsonwebtoken::encode(
+            &config.header,
+            token,
+            &config.encoding_key,
+        )?)
     }
 
-    /// 设置 JWT 的签发者 (`iss`)，接受一个 [`Option<T: Into<String>>`]。
-    #[inline]
-    pub fn issue_as_option<T>(mut self, iss: Option<T>) -> Self
-    where
-        T: Into<String>,
-    {
-        self.iss = iss.map(|val| val.into());
-        self
-    }
-
-    /// 设置 JWT 的受众 (`aud`)。
-    #[inline]
-    pub fn audiences<'a, T>(mut self, aud: &'a [T]) -> Self
-    where
-        String: From<&'a T>,
-    {
-        self.aud = aud.iter().map(|aud| aud.into()).collect();
-        self
-    }
-
-    /// 设置 JWT 的受众 (`aud`)，接受一个 `Option`。
-    #[inline]
-    pub fn audiences_option<'a, T>(mut self, aud: Option<&'a [T]>) -> Self
-    where
-        String: From<&'a T>,
-    {
-        self.aud = aud
-            .map(|aud| aud.iter().map(String::from).collect())
-            .unwrap_or_default();
-        self
-    }
-
-    /// 设置 JWT 的过期时间，从现在开始计算。
+    /// 设置 JWT 的相对过期时间，从现在开始计算。
     #[inline]
     pub fn expires_in(mut self, duration: chrono::Duration) -> Self {
         self.exp = (chrono::Utc::now() + duration).timestamp();
-        self
-    }
-
-    /// 设置 JWT 的生效时间，从现在开始计算。
-    #[inline]
-    pub fn not_valid_in(mut self, duration: chrono::Duration) -> Self {
-        self.nbf = (chrono::Utc::now() + duration).timestamp();
         self
     }
 
@@ -286,6 +185,20 @@ impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
         T: chrono::TimeZone,
     {
         self.exp = when.timestamp();
+        self
+    }
+
+    /// !!! 永不过期 !!!
+    #[inline]
+    pub fn never_expires(mut self) -> Self {
+        self.exp = i32::MAX as i64;
+        self
+    }
+
+    /// 设置 JWT 的生效时间，从现在开始计算。
+    #[inline]
+    pub fn not_valid_in(mut self, duration: chrono::Duration) -> Self {
+        self.nbf = (chrono::Utc::now() + duration).timestamp();
         self
     }
 
@@ -305,9 +218,67 @@ impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
         self.jti = id;
         self
     }
+
+    /// 使用给定的配置解码并验证一个字符串形式的 Token。
+    ///
+    /// 此函数会执行完整的验证流程，包括：
+    /// 1. 检查签名是否有效。
+    /// 2. 验证 `exp` 和 `nbf` 时间戳。
+    /// 3. 根据 `config.validation` 中的设置验证 `iss` 和 `aud`。
+    #[cfg(feature = "server-side")]
+    pub fn decode(token: &str, config: &JwtConfig) -> Result<Jwt<P>, AuthError> {
+        let kid = jsonwebtoken::decode_header(token)?
+            .kid
+            .ok_or(AuthError::MissingClaim("kid".to_string()))?;
+
+        let body_unchecked: Jwt<P> = serde_json::from_value(Self::decode_unchecked(token)?)?;
+
+        let key = config
+            .decoding_key
+            .get(&body_unchecked.iss)
+            .ok_or(AuthError::InvalidIssuer)?
+            .get(&kid)
+            .ok_or(AuthError::InvalidKeyId)?;
+
+        Ok(jsonwebtoken::decode::<Jwt<P>>(token, key, &config.validation)?.claims)
+    }
+
+    /// **[不安全]** 在不验证签名的情况下解码 JWT 的载荷。
+    ///
+    /// # 警告
+    ///
+    /// **绝对不要**相信此函数返回的数据！因为它**没有验证** JWT 的签名。
+    /// 这意味着任何人都可以伪造这个 JWT 的内容。
+    ///
+    /// 此函数仅应用于需要查看 Token 内容的调试或日志记录场景。
+    /// 在任何与安全相关的逻辑中，都**必须**使用 [`Jwt::decode`]。
+    #[cfg(feature = "server-side")]
+    pub fn decode_unchecked(token: &str) -> Result<serde_json::Value, AuthError> {
+        let mut parts = token.split('.');
+        let _header = parts.next();
+        let payload = parts.next().ok_or(AuthError::TokenInvalid)?;
+
+        let decoded_payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload)?;
+        let json_value = serde_json::from_slice(&decoded_payload)?;
+
+        Ok(json_value)
+    }
 }
 
 impl Permission {
+    fn validate_content_type_pattern(patterns: &Vec<String>) -> Result<(), ValidationError> {
+        if patterns.len() <= 8 && !patterns.iter().any(|s| s.len() > 128) {
+            return Ok(());
+        } else {
+            return Err(ValidationError::new("pattern too long/much for parsing"));
+        }
+    }
+
+    #[inline]
+    pub const fn new() -> Self {
+        Self::new_minimum()
+    }
+
     /// 创建一个 <u>**拥有所有权限**</u> 的 `root` `Permission`。
     ///
     /// ### 这个操作应当尽量少用，因为这个获取这个权限就意味着该用户能够读写所有的资源 (所有！)
@@ -331,9 +302,9 @@ impl Permission {
     ///
     /// - 允许操作: 无
     /// - 允许资源: [`None`] (所有路径都不允许)
-    /// - 大小限制：[`Some(0)`](Some) (上传的最大包问题大小为 0 字节)
+    /// - 大小限制：[`Some(0)`](Some) (上传的最大包大小为 0 字节)
     /// - MIME: **所有都不行**
-    pub fn new_minimum() -> Self {
+    pub const fn new_minimum() -> Self {
         Self {
             methods: vec![],
             resource_pattern: None,
@@ -353,7 +324,7 @@ impl Permission {
 
     /// 修改这个令牌能够访问的资源路径
     #[inline]
-    pub fn permit_access_url<T>(mut self, pattern: T) -> Self
+    pub fn permit_resource_pattern<T>(mut self, pattern: T) -> Self
     where
         T: Into<String>,
     {
@@ -363,7 +334,7 @@ impl Permission {
 
     /// 修改这个令牌能够访问的资源路径
     #[inline]
-    pub fn permit_access_url_option<T>(mut self, pattern: Option<T>) -> Self
+    pub fn permit_resource_pattern_option<T>(mut self, pattern: Option<T>) -> Self
     where
         T: Into<String>,
     {
@@ -373,13 +344,13 @@ impl Permission {
 
     /// 设置最大的内容长度
     #[inline]
-    pub fn restrict_maximum_size(mut self, max: u64) -> Self {
+    pub fn restrict_maximum_size(mut self, max: usize) -> Self {
         self.max_size = Some(max);
         self
     }
 
     #[inline]
-    pub fn restrict_maximum_size_option(mut self, max: Option<u64>) -> Self {
+    pub fn restrict_maximum_size_option(mut self, max: Option<usize>) -> Self {
         self.max_size = max;
         self
     }
@@ -391,6 +362,41 @@ impl Permission {
         self
     }
 
+    #[cfg(feature = "server-side")]
+    pub fn compile(self) -> CompiledPermission {
+        let Permission {
+            methods,
+            resource_pattern,
+            max_size,
+            allowed_content_types,
+        } = self;
+
+        let resource_pattern_cache = match &resource_pattern {
+            Some(pat) => Pattern::new(pat).ok(),
+            None => None,
+        };
+
+        let mut allowed_content_types_cache = vec![];
+
+        for pat in &allowed_content_types {
+            if let Ok(pat) = Pattern::new(pat) {
+                allowed_content_types_cache.push(pat)
+            }
+        }
+
+        CompiledPermission {
+            methods,
+            resource_pattern,
+            max_size,
+            allowed_content_types,
+            resource_pattern_cache,
+            allowed_content_types_cache,
+        }
+    }
+}
+
+#[cfg(feature = "server-side")]
+impl CompiledPermission {
     /// 检查此权限是否允许执行给定的 HTTP 方法。
     ///
     /// 如果 `operations` 包含 `HttpMethod::All` 或指定的 `method`，则返回 `true`。
@@ -405,11 +411,10 @@ impl Permission {
     ///
     /// 使用 `resource_pattern` 对 `path` 进行 Glob 匹配。
     /// 如果 `resource_pattern` 不是一个有效的 Glob 模式，会安全地返回 `false`。
+    /// 如果是一个 [`None`] 也会返回 false，因为规定了 [`None`] 表示所有都不能访问
     pub fn can_access(&self, path: &str) -> bool {
-        match &self.resource_pattern {
-            Some(pat) => Pattern::new(pat)
-                .map(|pattern| pattern.matches(path))
-                .unwrap_or(false),
+        match &self.resource_pattern_cache {
+            Some(pat) => pat.matches(path),
             None => false,
         }
     }
@@ -417,28 +422,17 @@ impl Permission {
     /// 检查给定的大小是否在 `max_size` 的限制内。
     ///
     /// 如果 `max_size` 是 `None` (无限制)，或者 `size` 小于等于限制，则返回 `true`。
-    pub fn check_size(&self, size: u64) -> bool {
+    pub fn check_size(&self, size: usize) -> bool {
         self.max_size.is_none_or(|limit| size <= limit)
     }
 
     /// 检查给定的内容类型是否被允许。
     ///
     /// 遍历 `allowed_content_types`，对每个模式进行 Glob 匹配。
-    ///
-    /// 由于这个 [`Conditions`] 通常来说是嵌入到每一个 token 中的，这就注定了无法缓存，或者说缓存意义不大
-    ///
-    /// 并且通常来说，一个许可证的内容类型条件应当比较简洁
     pub fn check_content_type(&self, content_type: &str) -> bool {
-        for allows in &self.allowed_content_types {
-            if Pattern::new(allows)
-                .map(|e| e.matches(content_type))
-                .unwrap_or(false)
-            {
-                return true;
-            }
-        }
-
-        false
+        self.allowed_content_types_cache
+            .iter()
+            .any(|allow_pat| allow_pat.matches(content_type))
     }
 }
 
@@ -477,11 +471,13 @@ impl From<axum::http::Method> for HttpMethod {
 }
 
 impl HttpMethod {
-    /// 判断一个方法是否安全，根据
-    ///  [MDN](https://developer.mozilla.org/zh-CN/docs/Glossary/Safe/HTTP) 以及 [rfc7231](https://datatracker.ietf.org/doc/html/rfc7231#section-4.2.1) 对于安全的定义
+    /// 判断一个方法是否安全，
+    /// 根据 [MDN](https://developer.mozilla.org/zh-CN/docs/Glossary/Safe/HTTP)
+    /// 以及 [rfc7231](https://datatracker.ietf.org/doc/html/rfc7231#section-4.2.1)
+    /// 对于安全的定义
     ///
     /// 一个方法是否安全取决于该方法的请求在被服务器响应后，<u>**服务器的状态是否改变**</u>
-    /// 
+    ///
     /// 或者说一个方法安不安全取决于是否蕴含着**写入请求**
     ///
     /// 所以，对于 [`OPTIONS`](HttpMethod::Options) 这类在通常认知中
@@ -490,11 +486,11 @@ impl HttpMethod {
     ///
     /// - 如果一个方法是只读的，如 [`HEAD`](HttpMethod::Head)，[`GET`](HttpMethod::Get) 等，那他就是安全的
     /// - 如果一个方法有写入的含义，如 [`PUT`](HttpMethod::Put)，[`DELETE`](HttpMethod::Delete) 等，那么就不安全
-    /// 
+    ///
     /// 同时，在这里，由于有两个例外：[`HttpMethod::Other`] 和 [`HttpMethod::All`] 这两个标记
-    /// 
-    /// 它们两个一个代表其他请求（rfc规范之外的），一个代表所有的请求，包括 rfc 规范之外的
-    pub fn safe(self) -> bool {
+    ///
+    /// 它们两个一个代表其他请求（rfc规范之外的），一个代表所有的请求，包括 rfc 规范之外的，所以都视为不安全
+    pub fn read_only(self) -> bool {
         match self {
             HttpMethod::Connect
             | HttpMethod::Get

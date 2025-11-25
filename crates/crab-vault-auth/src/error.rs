@@ -21,6 +21,9 @@ pub enum AuthError {
     #[error("invalid authorization format: expected 'Bearer <token>'")]
     InvalidAuthFormat,
 
+    #[error("no key id fed")]
+    InvalidKeyId,
+
     #[error("Some of the text was invalid UTF-8: {0}")]
     InvalidUtf8(
         #[from]
@@ -110,6 +113,7 @@ impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
         let status_code = match self {
             AuthError::MissingAuthHeader
+            | AuthError::InvalidKeyId
             | AuthError::InvalidAuthFormat
             | AuthError::TokenInvalid
             | AuthError::TokenExpired
@@ -127,10 +131,16 @@ impl IntoResponse for AuthError {
 
             AuthError::InsufficientPermissions => StatusCode::FORBIDDEN,
 
-            AuthError::InternalError(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            AuthError::InternalError(_) => StatusCode::UNAUTHORIZED,
         };
 
-        (status_code, axum::Json(self)).into_response()
+        (status_code).into_response()
+    }
+}
+
+impl From<serde_json::Error> for AuthError {
+    fn from(value: serde_json::Error) -> Self {
+        Self::InvalidJson(Arc::new(value))
     }
 }
 

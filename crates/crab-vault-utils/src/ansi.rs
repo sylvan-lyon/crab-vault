@@ -18,7 +18,7 @@ pub const STRIKE_THROUGH: usize = 9;
 
 #[derive(Clone, Copy, Default)]
 pub struct FontStyle {
-    options: Bitmap<u16>,
+    pub options: Bitmap<u16>,
 }
 
 #[derive(Clone, Copy)]
@@ -45,7 +45,7 @@ pub enum AnsiColor {
 pub struct AnsiStyle {
     fore: Option<AnsiColor>,
     back: Option<AnsiColor>,
-    font_style: FontStyle,
+    font: FontStyle,
 }
 
 #[derive(Clone, Copy)]
@@ -55,184 +55,6 @@ pub struct AnsiString<'a> {
     content: &'a str,
 }
 
-impl AnsiColor {
-    #[inline(always)]
-    pub fn into_fore(self) -> u8 {
-        self as u8
-    }
-
-    #[inline(always)]
-    pub fn into_back(self) -> u8 {
-        self as u8 + 10
-    }
-}
-
-impl<'a> Display for AnsiString<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.is_vanilla {
-            f.pad(self.content)
-        } else {
-            f.write_fmt(format_args!("{}", self.style))?;
-            f.pad(self.content)?;
-            f.write_str(RESET)
-        }
-    }
-}
-
-impl FontStyle {
-    pub fn new() -> Self {
-        Self {
-            options: Bitmap::new(),
-        }
-    }
-
-    pub fn merge(self, rhs: FontStyle) -> FontStyle {
-        Self {
-            options: self.options | rhs.options,
-        }
-    }
-
-    pub fn enabled(self, idx: usize) -> bool {
-        self.options.get(idx)
-    }
-}
-
-impl FontStyle {
-    pub fn bold(mut self, enabled: bool) -> Self {
-        self.options.set(BOLD, enabled);
-        self
-    }
-
-    pub fn dimmed(mut self, enabled: bool) -> Self {
-        self.options.set(DIMMED, enabled);
-        self
-    }
-
-    pub fn italic(mut self, enabled: bool) -> Self {
-        self.options.set(ITALIC, enabled);
-        self
-    }
-
-    pub fn underline(mut self, enabled: bool) -> Self {
-        self.options.set(UNDERLINE, enabled);
-        self
-    }
-
-    pub fn blink_slowly(mut self, enabled: bool) -> Self {
-        self.options.set(BLINK_SLOWLY, enabled);
-        self
-    }
-
-    pub fn blink_rapidly(mut self, enabled: bool) -> Self {
-        self.options.set(BLINK_RAPIDLY, enabled);
-        self
-    }
-
-    pub fn reverse(mut self, enabled: bool) -> Self {
-        self.options.set(REVERSE, enabled);
-        self
-    }
-
-    pub fn hidden(mut self, enabled: bool) -> Self {
-        self.options.set(HIDDEN, enabled);
-        self
-    }
-
-    pub fn strike_through(mut self, enabled: bool) -> Self {
-        self.options.set(STRIKE_THROUGH, enabled);
-        self
-    }
-}
-
-impl AnsiStyle {
-    pub fn new() -> Self {
-        Self {
-            fore: None,
-            back: None,
-            font_style: FontStyle::new(),
-        }
-    }
-
-    #[inline(always)]
-    pub fn new_vanilla() -> Self {
-        Self::new()
-    }
-
-    pub fn merge_style(mut self, other: FontStyle) -> Self {
-        self.font_style = self.font_style.merge(other);
-        self
-    }
-
-    pub fn with_fore(mut self, color: AnsiColor) -> Self {
-        self.fore = Some(color);
-        self
-    }
-
-    pub fn with_back(mut self, color: AnsiColor) -> Self {
-        self.back = Some(color);
-        self
-    }
-
-    pub fn is_vanilla(self) -> bool {
-        self.fore.is_none() && self.back.is_none()
-    }
-
-    pub fn decorate<'a>(self, content: &'a str) -> AnsiString<'a> {
-        AnsiString {
-            style: self,
-            is_vanilla: self.is_vanilla(),
-            content,
-        }
-    }
-}
-
-impl AnsiStyle {
-    pub fn bold(mut self, enabled: bool) -> Self {
-        self.font_style = self.font_style.bold(enabled);
-        self
-    }
-
-    pub fn dimmed(mut self, enabled: bool) -> Self {
-        self.font_style = self.font_style.dimmed(enabled);
-        self
-    }
-
-    pub fn italic(mut self, enabled: bool) -> Self {
-        self.font_style = self.font_style.italic(enabled);
-        self
-    }
-
-    pub fn underline(mut self, enabled: bool) -> Self {
-        self.font_style = self.font_style.underline(enabled);
-        self
-    }
-
-    pub fn blink_slowly(mut self, enabled: bool) -> Self {
-        self.font_style = self.font_style.blink_slowly(enabled);
-        self
-    }
-
-    pub fn blink_rapidly(mut self, enabled: bool) -> Self {
-        self.font_style = self.font_style.blink_rapidly(enabled);
-        self
-    }
-
-    pub fn reverse(mut self, enabled: bool) -> Self {
-        self.font_style = self.font_style.reverse(enabled);
-        self
-    }
-
-    pub fn hidden(mut self, enabled: bool) -> Self {
-        self.font_style = self.font_style.hidden(enabled);
-        self
-    }
-
-    pub fn strike_through(mut self, enabled: bool) -> Self {
-        self.font_style = self.font_style.strike_through(enabled);
-        self
-    }
-}
-
 impl Display for AnsiStyle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.is_vanilla() {
@@ -240,10 +62,8 @@ impl Display for AnsiStyle {
         } else {
             f.write_str(ESCAPE_BEGIN)?;
 
-            for code in 0..16usize {
-                if self.font_style.enabled(code) {
-                    f.write_fmt(format_args!(";{code}"))?;
-                }
+            for code in self.font.options.iter_ones() {
+                f.write_fmt(format_args!(";{code}"))?;
             }
 
             if self.fore.is_some() {
@@ -259,8 +79,173 @@ impl Display for AnsiStyle {
     }
 }
 
+impl<'a> Display for AnsiString<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // 与上面的 AnsiStyle 的 is_vanilla 方法不同
+        // AnsiString 的 is_vanilla 完全控制了是否输出转义序列
+        if self.is_vanilla {
+            f.pad(self.content)
+        } else {
+            f.write_fmt(format_args!("{}", self.style))?;
+            f.pad(self.content)?;
+            f.write_str(RESET)
+        }
+    }
+}
+
+impl FontStyle {
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            options: Bitmap::new(),
+        }
+    }
+}
+
+impl AnsiColor {
+    #[inline(always)]
+    pub fn into_fore(self) -> u8 {
+        self as u8
+    }
+
+    #[inline(always)]
+    pub fn into_back(self) -> u8 {
+        self as u8 + 10
+    }
+}
+
+impl FontStyle {
+    #[inline]
+    pub fn bold(mut self, enabled: bool) -> Self {
+        self.options.set(BOLD, enabled);
+        self
+    }
+
+    #[inline]
+    pub fn dimmed(mut self, enabled: bool) -> Self {
+        self.options.set(DIMMED, enabled);
+        self
+    }
+
+    #[inline]
+    pub fn italic(mut self, enabled: bool) -> Self {
+        self.options.set(ITALIC, enabled);
+        self
+    }
+
+    #[inline]
+    pub fn underline(mut self, enabled: bool) -> Self {
+        self.options.set(UNDERLINE, enabled);
+        self
+    }
+
+    #[inline]
+    pub fn blink_slowly(mut self, enabled: bool) -> Self {
+        self.options.set(BLINK_SLOWLY, enabled);
+        self
+    }
+
+    #[inline]
+    pub fn blink_rapidly(mut self, enabled: bool) -> Self {
+        self.options.set(BLINK_RAPIDLY, enabled);
+        self
+    }
+
+    #[inline]
+    pub fn reverse(mut self, enabled: bool) -> Self {
+        self.options.set(REVERSE, enabled);
+        self
+    }
+
+    #[inline]
+    pub fn hidden(mut self, enabled: bool) -> Self {
+        self.options.set(HIDDEN, enabled);
+        self
+    }
+
+    #[inline]
+    pub fn strike_through(mut self, enabled: bool) -> Self {
+        self.options.set(STRIKE_THROUGH, enabled);
+        self
+    }
+}
+
+impl AnsiStyle {
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            fore: None,
+            back: None,
+            font: FontStyle::new(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn new_vanilla() -> Self {
+        Self::new()
+    }
+
+    #[inline]
+    pub fn with_font(mut self, other: FontStyle) -> Self {
+        self.font.options |= other.options;
+        self
+    }
+
+    #[inline]
+    pub const fn with_fore(mut self, fore: AnsiColor) -> Self {
+        self.fore = Some(fore);
+        self
+    }
+
+    #[inline]
+    pub const fn with_back(mut self, back: AnsiColor) -> Self {
+        self.back = Some(back);
+        self
+    }
+
+    #[inline]
+    pub fn with_font_option(mut self, font: Option<FontStyle>) -> Self {
+        match font {
+            Some(other) => self.font.options |= other.options,
+            None => {}
+        }
+        self
+    }
+
+    #[inline]
+    pub const fn with_fore_option(mut self, color: Option<AnsiColor>) -> Self {
+        self.fore = color;
+        self
+    }
+
+    #[inline]
+    pub const fn with_back_option(mut self, color: Option<AnsiColor>) -> Self {
+        self.back = color;
+        self
+    }
+
+    #[inline]
+    pub const fn is_vanilla(self) -> bool {
+        self.fore.is_none() && self.back.is_none()
+    }
+
+    #[inline]
+    pub const fn decorate<'a>(self, content: &'a str) -> AnsiString<'a> {
+        AnsiString {
+            style: self,
+            is_vanilla: self.is_vanilla(),
+            content,
+        }
+    }
+}
+
 impl<'a> AnsiString<'a> {
-    pub fn new(content: &'a str) -> Self {
+    /// 这将创建一个 [`AnsiString`]
+    ///
+    /// 但是通过这种方式创建的 [`AnsiString`] **始终不会**带有任何的装饰，因为 AnsiString 这个结构**不提供任何装饰内容的 API**
+    ///
+    /// 你应该当使用 [`AnsiStyle::decorate`] 方法产生一个 [`AnsiString`]，这样产生的 [`AnsiString`] 就有了颜色信息、样式信息等
+    pub fn new_vanilla(content: &'a str) -> Self {
         Self {
             style: AnsiStyle::new(),
             is_vanilla: true,
@@ -268,8 +253,9 @@ impl<'a> AnsiString<'a> {
         }
     }
 
-    pub fn reset(self) -> Self {
-        Self::new(self.content)
+    pub fn reset(mut self) -> Self {
+        self.is_vanilla = true;
+        self
     }
 
     pub fn get_content(self) -> &'a str {

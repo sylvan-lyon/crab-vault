@@ -1,2 +1,2 @@
 pub mod bitmap;
-pub mod color;
+pub mod ansi;

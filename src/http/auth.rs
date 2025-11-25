@@ -10,18 +10,20 @@ use crate::error::cli::{CliError, MultiCliError};
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct JwtConfigBuilder {
-    pub encoding: AlgKeyPair,
-    pub decoding: Vec<AlgKeyPair>,
+    pub encoding: KeyInfo,
+    pub decoding: Vec<(String, Vec<KeyInfo>)>,
     pub validation: ValidationConfig,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
-pub struct AlgKeyPair {
-    algorithm: Algorithm,
-    form: KeyForm,
+pub struct KeyInfo {
+    pub algorithm: Algorithm,
+    pub form: KeyForm,
+
+    pub kid: String,
 
     #[serde(alias = "path")]
-    key: String,
+    pub key: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Default)]
@@ -40,15 +42,15 @@ pub enum KeyForm {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ValidationConfig {
-    required_spec_claims: Vec<String>,
-    leeway: u64,
-    reject_tokens_expiring_in_less_than: u64,
-    validate_exp: bool,
-    validate_nbf: bool,
-    aud: Option<Vec<String>>,
-    iss: Option<Vec<String>>,
-    sub: Option<String>,
-    decode_algorithms: Vec<Algorithm>,
+    pub required_spec_claims: Vec<String>,
+    pub leeway: u64,
+    pub reject_tokens_expiring_in_less_than: u64,
+    pub validate_exp: bool,
+    pub validate_nbf: bool,
+    pub aud: Option<Vec<String>>,
+    pub iss: Option<Vec<String>>,
+    pub sub: Option<String>,
+    pub decode_algorithms: Vec<Algorithm>,
 }
 
 impl Default for JwtConfigBuilder {
@@ -60,8 +62,8 @@ impl Default for JwtConfigBuilder {
 impl JwtConfigBuilder {
     pub fn new() -> Self {
         Self {
-            encoding: AlgKeyPair::default(),
-            decoding: vec![AlgKeyPair::default()],
+            encoding: KeyInfo::default(),
+            decoding: vec![("".into(), vec![KeyInfo::default()])],
             validation: ValidationConfig::default(),
         }
     }
@@ -71,13 +73,15 @@ impl JwtConfigBuilder {
 
         let decoding_key = self
             .decoding
-            .iter()
-            .filter_map(|pair| match pair.build_as_decode_key() {
-                Ok(alg_key_pair) => Some(alg_key_pair),
-                Err(e) => {
-                    errors.add(e);
-                    None
-                }
+            .into_iter()
+            .filter_map(|(iss, info)| {
+                let keys = info
+                    .into_iter()
+                    .filter_map(|info| info.build_as_decode_key().map_err(|e| errors.add(e)).ok())
+                    .map(|(kid, _alg, key)| (kid, key))
+                    .collect();
+
+                Some((iss, keys))
             })
             .collect();
 
@@ -100,18 +104,11 @@ impl JwtConfigBuilder {
             validation: self.validation.into(),
         };
 
-        if !res.decoding_key.contains_key(&self.encoding.algorithm) {
-            tracing::warn!(
-                "no decoding key provided for encoding algorithm {:?}; tokens signed by this server might not be verifiable",
-                self.encoding.algorithm
-            );
-        }
-
         Ok(res)
     }
 }
 
-impl AlgKeyPair {
+impl KeyInfo {
     fn get_key(&self) -> Result<Vec<u8>, CliError> {
         let res = match self.form {
             KeyForm::DerInline => BASE64_STANDARD.decode(self.key.clone()).map_err(|e| {
@@ -199,7 +196,7 @@ impl AlgKeyPair {
         }
     }
 
-    fn build_as_decode_key(&self) -> Result<(Algorithm, DecodingKey), CliError> {
+    fn build_as_decode_key(&self) -> Result<(String, Algorithm, DecodingKey), CliError> {
         if self.form.is_der() {
             let build_from_der = match self.algorithm {
                 Algorithm::HS256 | Algorithm::HS384 | Algorithm::HS512 => DecodingKey::from_secret,
@@ -210,6 +207,7 @@ impl AlgKeyPair {
             };
 
             Ok((
+                self.kid.clone(),
                 self.algorithm,
                 build_from_der(&self.get_key().map_err(|e| {
                     e.add_source("while building jwt encoding key from a der form".into())
@@ -234,6 +232,7 @@ impl AlgKeyPair {
             };
 
             Ok((
+                self.kid.clone(),
                 self.algorithm,
                 build_from_pem(&self.get_key()?).map_err(|e| {
                     CliError::new(

@@ -177,12 +177,14 @@ async fn extract_and_validate_token(
         .map_err(|_| ApiError::EncodingError)?
         .parse()
         .map_err(|_| ApiError::ValueParsingError)?;
-    if !jwt.payload.check_size(content_length) {
+
+    let perm = jwt.lad.clone().compile();
+    if !perm.check_size(content_length) {
         return Err(ApiError::BodyTooLarge.into());
     }
 
     // 5. 检查资源路径匹配和请求方法
-    if !jwt.payload.can_perform_method(method) || !jwt.payload.can_access(path) {
+    if !perm.can_perform_method(method) || !perm.can_access(path) {
         return Err(AuthError::InsufficientPermissions.into());
     }
 
@@ -192,9 +194,9 @@ async fn extract_and_validate_token(
         .ok_or(ApiError::MissingContentType)?
         .to_str()
         .map_err(|_| ApiError::InvalidContentType)?;
-    if !jwt.payload.check_content_type(content_type) {
+    if !perm.check_content_type(content_type) {
         return Err(ApiError::InvalidContentType.into());
     }
 
-    Ok(jwt.payload)
+    Ok(jwt.lad)
 }

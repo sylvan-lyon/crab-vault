@@ -15,8 +15,7 @@
 //! ## 示例
 //!
 //! ```
-//! use crab_vault_utils::bitmap::{Bitmap, BitStorage};
-//!
+//! # use crab_vault_utils::bitmap::{Bitmap, BitStorage};
 //! // 使用 u32 作为存储，创建一个 32 位的位图
 //! let mut artists = Bitmap::<u32>::new();
 //!
@@ -34,7 +33,7 @@
 //! assert_eq!(artists.count_ones(), 3);
 //!
 //! // 使用迭代器收集所有值为 1 的位的索引
-//! let set_bits: Vec<usize> = artists.iter().collect();
+//! let set_bits: Vec<usize> = artists.iter_ones().collect();
 //! assert_eq!(set_bits, vec![2, 8, 9]);
 //!
 //! // 创建另一个位图并进行合并
@@ -43,7 +42,7 @@
 //! other_artists.set(15, true);
 //!
 //! let all_artists = artists | other_artists;
-//! let expected_bits: Vec<usize> = all_artists.iter().collect();
+//! let expected_bits: Vec<usize> = all_artists.iter_ones().collect();
 //! assert_eq!(expected_bits, vec![2, 8, 9, 15]);
 //! ```
 
@@ -73,11 +72,11 @@ pub trait BitStorage:
     fn count_zeros(self) -> u32;
 }
 
-macro_rules! impl_bit_storage_for_type {
-    ($($t:ty),*) => {
+macro_rules! impl_bit_storage_for_basic_types {
+    ($($storage_type: ty), *) => {
         $(
-            impl BitStorage for $t {
-                const BITS: usize = std::mem::size_of::<$t>() * 8;
+            impl BitStorage for $storage_type {
+                const BITS: usize = std::mem::size_of::<$storage_type>() * 8;
 
                 #[inline]
                 fn trailing_zeros(self) -> u32 {
@@ -98,7 +97,7 @@ macro_rules! impl_bit_storage_for_type {
     };
 }
 
-impl_bit_storage_for_type!(u8, u16, u32, u64, u128);
+impl_bit_storage_for_basic_types!(u8, u16, u32, u64, u128);
 
 /// 一个通用的位图结构，由一个实现了 [`BitStorage`] 的类型支持。
 ///
@@ -113,12 +112,12 @@ impl_bit_storage_for_type!(u8, u16, u32, u64, u128);
 /// assert!(bitmap.get(3));
 /// assert!(!bitmap.get(4));
 ///
-/// let positions: Vec<usize> = bitmap.iter().collect();
+/// let positions: Vec<usize> = bitmap.iter_ones().collect();
 /// assert_eq!(positions, vec![3, 5]);
 /// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Bitmap<T: BitStorage> {
-    val: T,
+    inner: T,
 }
 
 /// 一个迭代器，用于遍历位图中所有值为 1 (positive) 的位索引。
@@ -132,15 +131,13 @@ pub struct NegativeIter<T: BitStorage> {
 }
 
 impl<T: BitStorage> From<NegativeIter<T>> for PositiveIter<T> {
-    fn from(value: NegativeIter<T>) -> Self {
-        let NegativeIter { bitmap } = value;
+    fn from(NegativeIter { bitmap }: NegativeIter<T>) -> Self {
         Self { bitmap }
     }
 }
 
 impl<T: BitStorage> From<PositiveIter<T>> for NegativeIter<T> {
-    fn from(value: PositiveIter<T>) -> Self {
-        let PositiveIter { bitmap } = value;
+    fn from(PositiveIter { bitmap }: PositiveIter<T>) -> Self {
         Self { bitmap }
     }
 }
@@ -149,15 +146,15 @@ impl<T: BitStorage> Iterator for PositiveIter<T> {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.bitmap.val == T::from(0) {
+        if self.bitmap.inner == T::from(0) {
             return None;
         }
 
-        let next_bit_pos = self.bitmap.val.trailing_zeros() as usize;
+        let next_bit_pos = self.bitmap.inner.trailing_zeros() as usize;
 
         // 清除刚刚找到的位，以便下一次迭代
         let mask = T::from(1) << next_bit_pos;
-        self.bitmap.val &= !mask;
+        self.bitmap.inner &= !mask;
         Some(next_bit_pos)
     }
 }
@@ -167,15 +164,15 @@ impl<T: BitStorage> Iterator for NegativeIter<T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         // 如果所有位都为 1，则没有 0 可以迭代
-        if self.bitmap.val == !T::from(0) {
+        if self.bitmap.inner == !T::from(0) {
             return None;
         }
 
-        let next_bit_pos = (!self.bitmap.val).trailing_zeros() as usize;
+        let next_bit_pos = (!self.bitmap.inner).trailing_zeros() as usize;
 
         // 设置刚刚找到的位为 1，以便下一次迭代
         let mask = T::from(1) << next_bit_pos;
-        self.bitmap.val |= mask;
+        self.bitmap.inner |= mask;
         Some(next_bit_pos)
     }
 }
@@ -190,7 +187,7 @@ impl<T: BitStorage> PositiveIter<T> {
     /// bitmap.set(1, true);
     /// bitmap.set(3, true);
     ///
-    /// let positive_iter = bitmap.iter();
+    /// let positive_iter = bitmap.iter_ones();
     /// let negative_iter = positive_iter.invert();
     /// let zeros: Vec<usize> = negative_iter.collect();
     ///
@@ -224,13 +221,13 @@ impl<T: BitStorage> NegativeIter<T> {
     }
 }
 
-impl<'a, T: BitStorage> IntoIterator for &'a Bitmap<T> {
+impl<T: BitStorage> IntoIterator for &Bitmap<T> {
     type Item = usize;
     type IntoIter = PositiveIter<T>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        self.iter()
+        self.iter_ones()
     }
 }
 
@@ -240,14 +237,14 @@ impl<T: BitStorage> IntoIterator for Bitmap<T> {
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        self.iter()
+        self.iter_ones()
     }
 }
 
 impl<T: BitStorage> From<T> for Bitmap<T> {
     #[inline]
     fn from(val: T) -> Self {
-        Self { val }
+        Self { inner: val }
     }
 }
 
@@ -263,7 +260,7 @@ impl<T: BitStorage> Bitmap<T> {
     /// ```
     #[inline]
     pub fn new_empty() -> Self {
-        Self { val: T::from(0) }
+        Self { inner: T::from(0) }
     }
 
     /// 创建一个所有位都为 1 的全满位图。
@@ -277,7 +274,7 @@ impl<T: BitStorage> Bitmap<T> {
     /// ```
     #[inline]
     pub fn new_full() -> Self {
-        Self { val: !T::from(0) }
+        Self { inner: !T::from(0) }
     }
 
     /// 创建一个空的位图，是 `new_empty` 的别名。
@@ -301,11 +298,11 @@ impl<T: BitStorage> Bitmap<T> {
     /// let mut bitmap = Bitmap::<u8>::new();
     /// bitmap.set(2, true);
     /// bitmap.set(6, true);
-    /// let ones: Vec<usize> = bitmap.iter().collect();
+    /// let ones: Vec<usize> = bitmap.iter_ones().collect();
     /// assert_eq!(ones, vec![2, 6]);
     /// ```
     #[inline]
-    pub fn iter(&self) -> PositiveIter<T> {
+    pub const fn iter_ones(&self) -> PositiveIter<T> {
         PositiveIter { bitmap: *self }
     }
 
@@ -324,7 +321,7 @@ impl<T: BitStorage> Bitmap<T> {
     /// assert_eq!(zeros, vec![4, 5, 6, 7]);
     /// ```
     #[inline]
-    pub fn iter_zeros(&self) -> NegativeIter<T> {
+    pub const fn iter_zeros(&self) -> NegativeIter<T> {
         NegativeIter { bitmap: *self }
     }
 
@@ -350,9 +347,9 @@ impl<T: BitStorage> Bitmap<T> {
         debug_assert!(idx < T::BITS, "Index out of bounds");
         let mask = T::from(1) << idx;
         if set {
-            self.val |= mask;
+            self.inner |= mask;
         } else {
-            self.val &= !mask;
+            self.inner &= !mask;
         }
     }
 
@@ -376,7 +373,7 @@ impl<T: BitStorage> Bitmap<T> {
     pub fn get(&self, idx: usize) -> bool {
         debug_assert!(idx < T::BITS, "Index out of bounds");
         let mask = T::from(1) << idx;
-        (self.val & mask) != T::from(0)
+        (self.inner & mask) != T::from(0)
     }
 
     /// 检查指定索引的位是否为 1。`get` 的别名。
@@ -386,10 +383,10 @@ impl<T: BitStorage> Bitmap<T> {
     /// # use crab_vault_utils::bitmap::{Bitmap, BitStorage};
     /// let mut bitmap = Bitmap::<u8>::new();
     /// bitmap.set(1, true);
-    /// assert!(bitmap.is_true_on(1));
+    /// assert!(bitmap.is_one_on(1));
     /// ```
     #[inline]
-    pub fn is_true_on(&self, idx: usize) -> bool {
+    pub fn is_one_on(&self, idx: usize) -> bool {
         self.get(idx)
     }
 
@@ -400,10 +397,10 @@ impl<T: BitStorage> Bitmap<T> {
     /// # use crab_vault_utils::bitmap::{Bitmap, BitStorage};
     /// let mut bitmap = Bitmap::<u8>::new();
     /// bitmap.set(1, true);
-    /// assert!(bitmap.is_false_on(0));
+    /// assert!(bitmap.is_zero_on(0));
     /// ```
     #[inline]
-    pub fn is_false_on(&self, idx: usize) -> bool {
+    pub fn is_zero_on(&self, idx: usize) -> bool {
         !self.get(idx)
     }
 
@@ -439,7 +436,7 @@ impl<T: BitStorage> Bitmap<T> {
     /// ```
     #[inline]
     pub fn count_ones(&self) -> u32 {
-        self.val.count_ones()
+        self.inner.count_ones()
     }
 
     /// 计算值为 0 的位的数量。
@@ -456,7 +453,7 @@ impl<T: BitStorage> Bitmap<T> {
     /// ```
     #[inline]
     pub fn count_zeros(&self) -> u32 {
-        T::BITS as u32 - self.val.count_ones()
+        T::BITS as u32 - self.inner.count_ones()
     }
 
     /// 检查位图中是否至少有一个位是 1。
@@ -473,7 +470,7 @@ impl<T: BitStorage> Bitmap<T> {
     /// ```
     #[inline]
     pub fn any(&self) -> bool {
-        self.val != T::from(0)
+        self.inner != T::from(0)
     }
 
     /// 检查位图中是否所有位都是 1。
@@ -490,7 +487,7 @@ impl<T: BitStorage> Bitmap<T> {
     /// ```
     #[inline]
     pub fn all(&self) -> bool {
-        self.val == !T::from(0)
+        self.inner == !T::from(0)
     }
 
     /// 检查位图中是否所有位都是 0。
@@ -507,7 +504,7 @@ impl<T: BitStorage> Bitmap<T> {
     /// ```
     #[inline]
     pub fn none(&self) -> bool {
-        self.val == T::from(0)
+        self.inner == T::from(0)
     }
 
     /// 查找第一个值为 1 的位的索引。
@@ -530,7 +527,7 @@ impl<T: BitStorage> Bitmap<T> {
         if self.none() {
             None
         } else {
-            Some(self.val.trailing_zeros() as usize)
+            Some(self.inner.trailing_zeros() as usize)
         }
     }
 }
@@ -542,16 +539,33 @@ impl<T: BitStorage> BitAnd for Bitmap<T> {
     /// # 示例
     /// ```
     /// # use crab_vault_utils::bitmap::{Bitmap, BitStorage};
-    /// let mut b1 = Bitmap::<u8>::from(0b__0000_1101); // 位 0, 2, 3
-    /// let mut b2 = Bitmap::<u8>::from(0b__0000_1011); // 位 0, 1, 3
+    /// let mut b1 = Bitmap::<u8>::from(0b__0000_1101); // 位 0, 2, 3 的值为 1
+    /// let mut b2 = Bitmap::<u8>::from(0b__0000_1011); // 位 0, 1, 3 的值为 1
     /// let result = b1 & b2;
-    /// let expected = Bitmap::<u8>::from(0b__0000_1001); // 位 0, 3
+    /// let expected = Bitmap::<u8>::from(0b__0000_1001); // 位 0, 3 的值为 1
     /// assert_eq!(result, expected);
     /// ```
     fn bitand(self, rhs: Self) -> Self::Output {
         Self {
-            val: self.val & rhs.val,
+            inner: self.inner & rhs.inner,
         }
+    }
+}
+
+impl<T: BitStorage> BitAndAssign for Bitmap<T> {
+    /// 按位或后赋值（&=）。
+    ///
+    /// # 示例
+    /// ```
+    /// # use crab_vault_utils::bitmap::{Bitmap, BitStorage};
+    /// let mut b1 = Bitmap::<u8>::from(0b__0000_1101); // 位 0, 2, 3 的值为 1
+    /// let mut b2 = Bitmap::<u8>::from(0b__0000_1011); // 位 0, 1, 3 的值为 1
+    /// b1 &= b2;
+    /// let expected = Bitmap::<u8>::from(0b__0000_1001); // 位 0, 3 的值为 1
+    /// assert_eq!(b1, expected);
+    /// ```
+    fn bitand_assign(&mut self, rhs: Self) {
+        self.inner &= rhs.inner
     }
 }
 
@@ -562,16 +576,33 @@ impl<T: BitStorage> BitOr for Bitmap<T> {
     /// # 示例
     /// ```
     /// # use crab_vault_utils::bitmap::{Bitmap, BitStorage};
-    /// let mut b1 = Bitmap::<u8>::from(0b__0000_1101); // 位 0, 2, 3
-    /// let mut b2 = Bitmap::<u8>::from(0b__0000_1011); // 位 0, 1, 3
+    /// let mut b1 = Bitmap::<u8>::from(0b__0000_1101); // 位 0, 2, 3 的值为 1
+    /// let mut b2 = Bitmap::<u8>::from(0b__0000_1011); // 位 0, 1, 3 的值为 1
     /// let result = b1 | b2;
-    /// let expected = Bitmap::<u8>::from(0b__0000_1111); // 位 0, 1, 2, 3
+    /// let expected = Bitmap::<u8>::from(0b__0000_1111); // 位 0, 1, 2, 3 的值为 1
     /// assert_eq!(result, expected);
     /// ```
     fn bitor(self, rhs: Self) -> Self::Output {
         Self {
-            val: self.val | rhs.val,
+            inner: self.inner | rhs.inner,
         }
+    }
+}
+
+impl<T: BitStorage> BitOrAssign for Bitmap<T> {
+    /// 按位或后赋值（|=）。
+    ///
+    /// # 示例
+    /// ```
+    /// # use crab_vault_utils::bitmap::{Bitmap, BitStorage};
+    /// let mut b1 = Bitmap::<u8>::from(0b__0000_1101); // 位 0, 2, 3 的值为 1
+    /// let mut b2 = Bitmap::<u8>::from(0b__0000_1011); // 位 0, 1, 3 的值为 1
+    /// b1 |= b2;
+    /// let expected = Bitmap::<u8>::from(0b__0000_1111); // 位 0, 1, 2, 3 的值为 1
+    /// assert_eq!(b1, expected);
+    /// ```
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.inner |= rhs.inner
     }
 }
 
@@ -582,16 +613,33 @@ impl<T: BitStorage> BitXor for Bitmap<T> {
     /// # 示例
     /// ```
     /// # use crab_vault_utils::bitmap::{Bitmap, BitStorage};
-    /// let mut b1 = Bitmap::<u8>::from(0b__0000_1101); // 位 0, 2, 3
-    /// let mut b2 = Bitmap::<u8>::from(0b__0000_1011); // 位 0, 1, 3
+    /// let mut b1 = Bitmap::<u8>::from(0b__0000_1101); // 位 0, 2, 3 的值为 1
+    /// let mut b2 = Bitmap::<u8>::from(0b__0000_1011); // 位 0, 1, 3 的值为 1
     /// let result = b1 ^ b2;
-    /// let expected = Bitmap::<u8>::from(0b__0000_0110); // 位 1, 2
+    /// let expected = Bitmap::<u8>::from(0b__0000_0110); // 位 1, 2 的值为 1
     /// assert_eq!(result, expected);
     /// ```
     fn bitxor(self, rhs: Self) -> Self::Output {
         Self {
-            val: self.val ^ rhs.val,
+            inner: self.inner ^ rhs.inner,
         }
+    }
+}
+
+impl<T: BitStorage> BitXorAssign for Bitmap<T> {
+    /// 按位或后赋值（^=）。
+    ///
+    /// # 示例
+    /// ```
+    /// # use crab_vault_utils::bitmap::{Bitmap, BitStorage};
+    /// let mut b1 = Bitmap::<u8>::from(0b__0000_1101); // 位 0, 2, 3 的值为 1
+    /// let mut b2 = Bitmap::<u8>::from(0b__0000_1011); // 位 0, 1, 3 的值为 1
+    /// b1 ^= b2;
+    /// let expected = Bitmap::<u8>::from(0b__0000_0110); // 位 1, 2 的值为 1
+    /// assert_eq!(b1, expected);
+    /// ```
+    fn bitxor_assign(&mut self, rhs: Self) {
+        self.inner ^= rhs.inner
     }
 }
 
@@ -608,6 +656,6 @@ impl<T: BitStorage> Not for Bitmap<T> {
     /// assert_eq!(result, expected);
     /// ```
     fn not(self) -> Self::Output {
-        Self { val: !self.val }
+        Self { inner: !self.inner }
     }
 }

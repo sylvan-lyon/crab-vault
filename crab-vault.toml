@@ -10,7 +10,7 @@ public_methods = ["ALL"]
 [server.auth.jwt_config]
 encoding = {algorithm = "HS512", form = "der_inline", key = "aGVsbG8td29ybGQ="}  # 开发环境密钥
 decoding = [
-    {algorithm = "HS256", form = "der_inline", key = "aGVsbG8td29ybGQ="}
+    "some one", {algorithm = "HS256", form = "der_inline", key = "aGVsbG8td29ybGQ="}
 ]  # 开发环境密钥，注意：decoding_key 是一个数组，可以接受很多的密钥
 
 [server.auth.jwt_config.validation]
@@ -18,7 +18,7 @@ aud = ["crab vault"]
 
 [logger]
 level = "debug"  # 开发环境使用更详细的日志
-with_ansi = true  # 开发环境使用彩色输出
+with_ansi = true # 开发环境使用彩色输出
 with_file = true
 with_target = true
 with_thread = true

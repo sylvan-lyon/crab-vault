@@ -52,7 +52,7 @@ pub struct GenerateArgs {
 
     /// The max size of a request body (in bytes), if not provided, the http request body can be extremely giant (MAX to u64)
     #[arg(long)]
-    pub max_size: Option<u64>,
+    pub max_size: Option<usize>,
 
     /// The allowed content type (UNIX shell wildcard supported) (e.g., application/* or *)
     #[arg(long, value_delimiter = ',', default_value = "*")]
@@ -79,14 +79,18 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
     let validation_config = &jwt_config.validation;
 
     let iss = if args.issue_as.is_some() {
-        args.issue_as
+        args.issue_as.unwrap()
     } else {
         validation_config.iss.as_ref().and_then(|issuers| {
             let issuers_vec: Vec<_> = issuers.iter().collect();
             issuers_vec
                 .get(rand::random_range(0..issuers_vec.len()))
                 .map(|s| (*s).clone())
-        })
+        }).ok_or(CliError::new(
+            ErrorKind::MissingRequiredArgument,
+            "Field `iss` is not provided either in your command nor in your config file.".into(),
+            None,
+        ))?
     };
 
     let aud = if args.audiences.is_some() {
@@ -101,13 +105,11 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
 
     let payload = Permission::new_minimum()
         .permit_method(args.operations)
-        .permit_access_url(args.resource_pattern)
+        .permit_resource_pattern(args.resource_pattern)
         .restrict_maximum_size_option(args.max_size)
         .permit_content_type(args.allowed_content_type);
 
-    let claims = Jwt::new(payload)
-        .issue_as_option(iss.as_ref())
-        .audiences(&aud)
+    let claims = Jwt::new(iss, aud, payload)
         .expires_in(Duration::seconds(args.exp_offset))
         .not_valid_in(Duration::seconds(args.nbf_offset));
 

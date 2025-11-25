@@ -1,6 +1,6 @@
 use chrono::Local;
 
-use crab_vault_utils::color::{
+use crab_vault_utils::ansi::{
     AnsiColor::{self, *},
     AnsiString, AnsiStyle, FontStyle,
 };
@@ -245,17 +245,10 @@ impl PrettyLogger {
             return AnsiStyle::new_vanilla();
         }
 
-        let mut style = AnsiStyle::new();
-        if let Some(fore) = fore {
-            style = style.with_fore(fore);
-        }
-        if let Some(back) = back {
-            style = style.with_back(back);
-        }
-        if let Some(font) = font {
-            style = style.merge_style(font);
-        }
-        style
+        AnsiStyle::new()
+            .with_fore_option(fore)
+            .with_back_option(back)
+            .with_font_option(font)
     }
 }
 

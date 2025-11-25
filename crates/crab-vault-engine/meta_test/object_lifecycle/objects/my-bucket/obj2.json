@@ -1,0 +1,10 @@
+{
+  "object-name": "obj2",
+  "bucket-name": "my-bucket",
+  "size": 0,
+  "content-type": "",
+  "etag": "",
+  "created-at": "1970-01-01T00:00:00Z",
+  "updated-at": "1970-01-01T00:00:00Z",
+  "user-meta": null
+}
