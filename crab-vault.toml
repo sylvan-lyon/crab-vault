@@ -7,14 +7,21 @@ port = 32767
 pattern = "*"
 public_methods = ["ALL"]
 
-[server.auth.jwt_config]
-encoding = {algorithm = "HS512", form = "der_inline", key = "aGVsbG8td29ybGQ="}  # 开发环境密钥
-decoding = [
-    "some one", {algorithm = "HS256", form = "der_inline", key = "aGVsbG8td29ybGQ="}
-]  # 开发环境密钥，注意：decoding_key 是一个数组，可以接受很多的密钥
+[server.auth.jwt_encoder_config]
+encoding_keys = [
+    {algorithm = "HS256", form = "der_inline", kid = "id1", key = "test"}
+]
+issue_as = "overflow"
+audience = ["crab-vault"]
 
-[server.auth.jwt_config.validation]
-aud = ["crab vault"]
+[server.auth.jwt_decoder_config]
+aud = ["crab-vault", "crab vault", "sylvan"]
+leeway = 0
+reject_tokens_expiring_in_less_than = 0
+decoding_keys = [
+    ["overflow",       {algorithm = "HS256", form = "der_inline", kid = "id1", key = "test"}],
+    ["brain-overflow", {algorithm = "HS256", form = "der_inline", kid = "id1", key = "test"}]
+]
 
 [logger]
 level = "debug"  # 开发环境使用更详细的日志

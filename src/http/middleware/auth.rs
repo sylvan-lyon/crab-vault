@@ -13,17 +13,20 @@ use axum::{
     },
     response::{IntoResponse, Response},
 };
-use crab_vault_auth::{HttpMethod, Jwt, JwtConfig, Permission, error::AuthError};
+use crab_vault_auth::{HttpMethod, Jwt, JwtDecoder, Permission, error::AuthError};
 use glob::Pattern;
 use tokio::sync::OnceCell;
 use tower::{Layer, Service};
 
-use crate::{app_config, error::api::ApiError};
+use crate::{
+    app_config,
+    error::{api::ApiError, cli::MultiCliError},
+};
 
 #[derive(Clone)]
 pub struct AuthMiddleware<Inner> {
     inner: Inner,
-    jwt_config: Arc<JwtConfig>,
+    jwt_config: Arc<JwtDecoder>,
     path_rules: Arc<PathRulesCache>,
 }
 
@@ -115,7 +118,7 @@ where
 }
 
 #[derive(Clone)]
-pub struct AuthLayer(Arc<JwtConfig>, Arc<PathRulesCache>);
+pub struct AuthLayer(Arc<JwtDecoder>, Arc<PathRulesCache>);
 
 impl AuthLayer {
     /// 此函数将在堆上创建一个 [`JwtConfig`] 结构作为这个中间件的配置
@@ -124,10 +127,10 @@ impl AuthLayer {
             Arc::new(
                 app_config::server()
                     .auth()
-                    .jwt_config_builder()
+                    .decoder()
                     .clone()
-                    .build()
-                    .map_err(|e| e.exit_now())
+                    .try_into()
+                    .map_err(MultiCliError::exit_now)
                     .unwrap(),
             ),
             Arc::new(PathRulesCache::new()),
@@ -152,7 +155,7 @@ async fn extract_and_validate_token(
     headers: &HeaderMap,
     method: HttpMethod,
     path: &str,
-    jwt_config: &JwtConfig,
+    decoder: &JwtDecoder,
 ) -> Result<Permission, Response> {
     // 1. 提取Authorization头
     let auth_header = headers
@@ -167,7 +170,7 @@ async fn extract_and_validate_token(
         .ok_or(AuthError::InvalidAuthFormat)?;
 
     // 3. 解码并验证JWT
-    let jwt: Jwt<Permission> = Jwt::decode(token, jwt_config)?;
+    let jwt: Jwt<Permission> = decoder.decode(token)?;
 
     // 4. 检查 content-length，如果没过这个要求，那更是演都不演了
     let content_length = headers
@@ -178,7 +181,7 @@ async fn extract_and_validate_token(
         .parse()
         .map_err(|_| ApiError::ValueParsingError)?;
 
-    let perm = jwt.lad.clone().compile();
+    let perm = jwt.load.clone().compile();
     if !perm.check_size(content_length) {
         return Err(ApiError::BodyTooLarge.into());
     }
@@ -198,5 +201,5 @@ async fn extract_and_validate_token(
         return Err(ApiError::InvalidContentType.into());
     }
 
-    Ok(jwt.lad)
+    Ok(jwt.load)
 }

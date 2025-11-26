@@ -1,10 +1,12 @@
 use crate::app_config;
-use crate::error::cli::CliError;
-use crab_vault_auth::{HttpMethod, Jwt, Permission};
+use crate::error::cli::{CliError, MultiCliError};
+use crab_vault_auth::{HttpMethod, Jwt, JwtDecoder, JwtEncoder, Permission};
 
 use chrono::Duration;
 use clap::error::ErrorKind;
 use clap::{Args, Subcommand};
+use jsonwebtoken::Header;
+use rand::random_range;
 use std::io::{self, Read};
 
 #[derive(Args)]
@@ -69,38 +71,23 @@ pub fn exec(cmd: Command) {
 }
 
 fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
-    let jwt_config = app_config::server()
-        .auth()
-        .jwt_config_builder()
+    let jwt_encoder_config = app_config::server().auth().encoder();
+    let jwt_encoder: JwtEncoder = jwt_encoder_config
         .clone()
-        .build()
-        .map_err(|e| e.exit_now())
+        .try_into()
+        .map_err(MultiCliError::exit_now)
         .unwrap();
-    let validation_config = &jwt_config.validation;
 
     let iss = if args.issue_as.is_some() {
         args.issue_as.unwrap()
     } else {
-        validation_config.iss.as_ref().and_then(|issuers| {
-            let issuers_vec: Vec<_> = issuers.iter().collect();
-            issuers_vec
-                .get(rand::random_range(0..issuers_vec.len()))
-                .map(|s| (*s).clone())
-        }).ok_or(CliError::new(
-            ErrorKind::MissingRequiredArgument,
-            "Field `iss` is not provided either in your command nor in your config file.".into(),
-            None,
-        ))?
+        jwt_encoder_config.issue_as().to_string()
     };
 
     let aud = if args.audiences.is_some() {
         args.audiences.unwrap()
     } else {
-        validation_config
-            .aud
-            .as_ref()
-            .map(|aud| aud.iter().cloned().collect())
-            .unwrap_or_default()
+        jwt_encoder_config.audience().iter().cloned().collect()
     };
 
     let payload = Permission::new_minimum()
@@ -109,12 +96,29 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
         .restrict_maximum_size_option(args.max_size)
         .permit_content_type(args.allowed_content_type);
 
-    let claims = Jwt::new(iss, aud, payload)
+    let claims = Jwt::new(iss, &aud, payload)
         .expires_in(Duration::seconds(args.exp_offset))
         .not_valid_in(Duration::seconds(args.nbf_offset));
 
+    let mut header = {
+        let algs = jwt_encoder_config.algs();
+        let random_idx = random_range(0..algs.len());
+        Header::new(algs[random_idx])
+    };
+
+    header.kid = Some({
+        let kids = jwt_encoder_config.kids();
+        let random_idx = random_range(0..kids.len());
+        kids[random_idx].clone()
+    });
+
     // 编码 JWT
-    let token = Jwt::encode(&claims, &jwt_config)
+    let token = jwt_encoder
+        .encode(
+            &header,
+            &claims,
+            (&header.kid).as_ref().unwrap(),
+        )
         .map_err(|e| CliError::new(ErrorKind::Io, format!("JWT encoding failed: {e}"), None))?;
 
     println!("{}", token);
@@ -140,22 +144,22 @@ fn verify_jwt() -> Result<(), CliError> {
         ));
     }
 
-    let jwt_config = app_config::server()
+    let jwt_decoder: JwtDecoder = app_config::server()
         .auth()
-        .jwt_config_builder()
+        .decoder()
         .clone()
-        .build()
-        .map_err(|e| e.exit_now())
+        .try_into()
+        .map_err(MultiCliError::exit_now)
         .unwrap();
 
     // 解码
-    let decoded = Jwt::<Permission>::decode_unchecked(token).map_err(CliError::from)?;
+    let decoded = JwtDecoder::decode_unchecked(token).map_err(CliError::from)?;
     let pretty_json = serde_json::to_string_pretty(&decoded).map_err(CliError::from)?;
 
     // 验证
-    match Jwt::<Permission>::decode(token, &jwt_config) {
-        Ok(_) => println!("Token verified successfully. Payload (Claims):\n"),
-        Err(e) => println!("Token invalid because of {e}. Payload (Claims):\n"),
+    match jwt_decoder.decode::<Permission>(token) {
+        Ok(_) => eprintln!("Token verified successfully. Payload (Claims):\n"),
+        Err(e) => eprintln!("Token invalid because of {e}. Payload (Claims):\n"),
     }
 
     println!("{}", pretty_json);

@@ -4,4 +4,7 @@
 /data
 /meta
 
+/crates/crab-vault-engine/data_test
+/crates/crab-vault-engine/meta_test
+
 .env

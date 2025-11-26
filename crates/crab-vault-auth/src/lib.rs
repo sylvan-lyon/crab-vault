@@ -6,45 +6,41 @@ use serde::{Deserialize, Serialize};
 use std::vec;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
+use std::collections::HashMap;
 
 #[cfg(feature = "server-side")]
 use base64::Engine;
 #[cfg(feature = "server-side")]
 use glob::Pattern;
 #[cfg(feature = "server-side")]
-use jsonwebtoken::{DecodingKey, Validation};
-#[cfg(feature = "server-side")]
-use std::collections::HashMap;
+use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 
 use crate::error::AuthError;
 
-/// JWT 编解码所需的完整配置。
-///
-/// 建议在应用启动时创建此结构，并使用 `Arc` 在多个线程间共享。
-pub struct JwtConfig {
-    /// JWT 的头部 (`Header`)。定义了所使用的算法 (`alg`) 和类型 (`typ`, 通常是 "JWT" 或者不写)。
-    pub header: Header,
+pub struct JwtEncoder {
+    /// 用于签发 JWT 的密钥。从 kid 到 [`EncodingKey`] 的映射
+    pub encoding_key: HashMap<String, EncodingKey>,
+}
 
-    /// 用于签发 JWT 的密钥。
-    pub encoding_key: EncodingKey,
-
+#[cfg(feature = "server-side")]
+pub struct JwtDecoder {
     /// 用于验证 JWT 的密钥映射。
     ///
-    /// [`HashMap`] 的键是签发者 iss，值是 kid 和 对应的轮换密钥 (kid [`DecodingKey`])。
+    /// [`HashMap`] 的键是签发者 (iss, kid)，值是对应的轮换密钥 ([`DecodingKey`])。
     #[cfg(feature = "server-side")]
-    pub decoding_key: HashMap<String, HashMap<String, DecodingKey>>,
+    decoding_keys: HashMap<(String, String), DecodingKey>,
 
     /// JWT 的验证规则。
     ///
     /// 用于配置如何验证 `exp`, `nbf`, `iss`, `aud` 等标准声明。
     #[cfg(feature = "server-side")]
-    pub validation: Validation,
+    validation: Validation,
 }
 
 /// 表示一个完整的 JWT，包含标准声明和自定义载荷。
 ///
 /// 泛型参数 `P` 代表自定义的载荷 (Payload) 结构体。
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Jwt<P> {
     /// (Issuer) 签发者
@@ -66,7 +62,7 @@ pub struct Jwt<P> {
     pub jti: Uuid,
 
     /// 自定义的载荷数据。
-    pub lad: P,
+    pub load: P,
 }
 
 /// JWT 令牌的载荷 (Payload) 中用于权限控制的部分。
@@ -78,7 +74,7 @@ pub struct Jwt<P> {
 /// 所以我认为没有必要缓存校验时生成的 [`glob Pattern`](Pattern)。
 ///
 /// 如果需要多次确认这个 [`Permission`] 能不能访问某一个数据，可以自己编译这个 glob 表达式。
-#[derive(Serialize, Deserialize, Validate, Clone, Debug)]
+#[derive(Serialize, Deserialize, Validate, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Permission {
     /// 允许的操作列表。
@@ -137,6 +133,163 @@ pub enum HttpMethod {
     All,
 }
 
+impl JwtEncoder {
+    pub fn new(encoding_key: HashMap<String, EncodingKey>) -> Self {
+        Self { encoding_key }
+    }
+
+    /// 将 JWT 声明编码为字符串形式的 Token。
+    ///
+    /// 注意：header 中的 alg 字段和 kid 对应的加密算法需要保持一致
+    #[inline]
+    pub fn encode<P: Serialize>(
+        &self,
+        header: &Header,
+        claims: &Jwt<P>,
+        kid: &str,
+    ) -> Result<String, AuthError> {
+        use AuthError::InternalError;
+
+        let key = self
+            .encoding_key
+            .get(kid)
+            .ok_or(InternalError("No such kid found in your Encoder".into()))?;
+
+        Ok(jsonwebtoken::encode(header, claims, key)?)
+    }
+}
+
+#[cfg(feature = "server-side")]
+impl JwtDecoder {
+    /// 这个函数构造出来的 [`JwtDecodeConfig`] 完全不可用！
+    ///
+    /// 因为起码还需要需要设置 (aud, kid) -> [`DecodingKey`] 的映射、
+    ///
+    /// validation 接受的算法、iss、自己认为的自己是哪个 aud
+    pub fn new() -> Self {
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.validate_aud = true;
+        validation.validate_exp = true;
+        validation.validate_nbf = true;
+        validation.algorithms = vec![];
+        validation.reject_tokens_expiring_in_less_than = 0;
+        validation.leeway = 60;
+
+        // 必须有下面的四个字段，否则视为非法 token，
+        // jsonwebtoken 只接受下面的这些和 sub 字段，所以 iat 限制无法设置
+        // 当然，如果没有，serde 也会自己产生反序列化错误，所以应该没问题……吧
+
+        validation.set_required_spec_claims(&["aud", "exp", "nbf", "iss"]);
+        Self {
+            decoding_keys: HashMap::new(),
+            validation,
+        }
+    }
+
+    /// 设置 (iss, kid) 到 [`DecodingKey`] 的映射
+    ///
+    /// 注意  [`mapping`](HashMap) 的联合主键的顺序是 (iss, kid)，别搞反了！
+    pub fn iss_kid_dec(mut self, mapping: HashMap<(String, String), DecodingKey>) -> Self {
+        self.decoding_keys = mapping;
+        self
+    }
+
+    /// 设置接受的算法
+    pub fn algorithms(mut self, algs: &[Algorithm]) -> Self {
+        self.validation.algorithms = algs.iter().copied().collect();
+        self
+    }
+
+    /// 设置接受的 issuer
+    #[inline]
+    pub fn authorized_issuer<T: ToString>(mut self, iss: &[T]) -> Self {
+        self.validation.set_issuer(iss);
+        self
+    }
+
+    /// 设置接受的 audience
+    #[inline]
+    pub fn possible_audience<T: ToString>(mut self, aud: &[T]) -> Self {
+        self.validation.set_audience(aud);
+        self
+    }
+
+    /// 设置接受的 leeway
+    #[inline]
+    pub fn leeway(mut self, leeway: u64) -> Self {
+        self.validation.leeway = leeway;
+        self
+    }
+
+    /// 临期的 token 不予通过
+    #[inline]
+    pub fn reject_tokens_expiring_in_less_than(mut self, tolerence: u64) -> Self {
+        self.validation.reject_tokens_expiring_in_less_than = tolerence;
+        self
+    }
+
+    /// 使用给定的配置解码并验证一个字符串形式的 Token。
+    ///
+    /// 此函数会执行完整的验证流程，包括：
+    /// 1. 检查签名是否有效。
+    /// 2. 验证 `exp` 和 `nbf` 时间戳。
+    /// 3. 根据 `config.validation` 中的设置验证 `iss` 和 `aud`。
+    /// 
+    /// ### 注意这个函数的泛型参数是 `P`，返回值类型是 `Jwt<P>`，
+    /// 
+    /// #### 所以需要这样写：
+    /// 
+    /// ```rust,ignore
+    /// let jwt = decoder.decode::<Permission>(token)?;
+    /// // 这个 jwt 解析出来的类型是 Jwt<Permission>
+    /// ```
+    /// 
+    /// #### 而不是这样：
+    /// ```rust,ignore
+    /// let jwt = decoder.decode::<Jwt<Permission>>(token)?;
+    /// // 这样的话解析出来的类型就是 Jwt<Jwt<Permission>>，会多套一层
+    /// ```
+    #[cfg(feature = "server-side")]
+    pub fn decode<P>(&self, token: &str) -> Result<Jwt<P>, AuthError>
+    where
+        for<'de> P: Deserialize<'de>,
+    {
+        let kid = jsonwebtoken::decode_header(token)?
+            .kid
+            .ok_or(AuthError::MissingClaim("kid".to_string()))?;
+
+        let body_unchecked: Jwt<P> = serde_json::from_value(Self::decode_unchecked(token)?)?;
+
+        let key = self
+            .decoding_keys
+            .get(&(body_unchecked.iss, kid))
+            .ok_or(AuthError::InvalidIssuer)?;
+
+        Ok(jsonwebtoken::decode::<Jwt<P>>(token, key, &self.validation)?.claims)
+    }
+
+    /// **[不安全]** 在不验证签名的情况下解码 JWT 的载荷。
+    ///
+    /// # 警告
+    ///
+    /// **绝对不要**相信此函数返回的数据！因为它**没有验证** JWT 的签名。
+    /// 这意味着任何人都可以伪造这个 JWT 的内容。
+    ///
+    /// 此函数仅应用于需要查看 Token 内容的调试或日志记录场景。
+    /// 在任何与安全相关的逻辑中，都**必须**使用 [`Jwt::decode`]。
+    #[cfg(feature = "server-side")]
+    pub fn decode_unchecked(token: &str) -> Result<serde_json::Value, AuthError> {
+        let mut parts = token.split('.');
+        let _header = parts.next();
+        let payload = parts.next().ok_or(AuthError::TokenInvalid)?;
+
+        let decoded_payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload)?;
+        let json_value = serde_json::from_slice(&decoded_payload)?;
+
+        Ok(json_value)
+    }
+}
+
 impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
     /// 创建一个新的 `Jwt` 实例，并填入默认值。
     ///
@@ -148,27 +301,17 @@ impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
     /// - `iat`: 当前时间的 Unix 时间戳
     /// - `jti`: 一个使用 [`Uuid::new_v4`] 新生成的 [`Uuid`]
     #[inline]
-    pub fn new(iss: String, aud: Vec<String>, payload: P) -> Self {
+    pub fn new<T: ToString, U: ToString>(iss: T, aud: &[U], payload: P) -> Self {
         let now = chrono::Utc::now().timestamp();
         Self {
-            iss,
-            aud,
+            iss: iss.to_string(),
+            aud: aud.iter().map(|s| s.to_string()).collect(),
             exp: now + 3600,
             nbf: now,
             iat: now,
             jti: Uuid::new_v4(),
-            lad: payload,
+            load: payload,
         }
-    }
-
-    /// 使用给定的配置将 JWT 声明编码为字符串形式的 Token。
-    #[inline]
-    pub fn encode(token: &Jwt<P>, config: &JwtConfig) -> Result<String, AuthError> {
-        Ok(jsonwebtoken::encode(
-            &config.header,
-            token,
-            &config.encoding_key,
-        )?)
     }
 
     /// 设置 JWT 的相对过期时间，从现在开始计算。
@@ -217,51 +360,6 @@ impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
     pub fn uuid(mut self, id: Uuid) -> Self {
         self.jti = id;
         self
-    }
-
-    /// 使用给定的配置解码并验证一个字符串形式的 Token。
-    ///
-    /// 此函数会执行完整的验证流程，包括：
-    /// 1. 检查签名是否有效。
-    /// 2. 验证 `exp` 和 `nbf` 时间戳。
-    /// 3. 根据 `config.validation` 中的设置验证 `iss` 和 `aud`。
-    #[cfg(feature = "server-side")]
-    pub fn decode(token: &str, config: &JwtConfig) -> Result<Jwt<P>, AuthError> {
-        let kid = jsonwebtoken::decode_header(token)?
-            .kid
-            .ok_or(AuthError::MissingClaim("kid".to_string()))?;
-
-        let body_unchecked: Jwt<P> = serde_json::from_value(Self::decode_unchecked(token)?)?;
-
-        let key = config
-            .decoding_key
-            .get(&body_unchecked.iss)
-            .ok_or(AuthError::InvalidIssuer)?
-            .get(&kid)
-            .ok_or(AuthError::InvalidKeyId)?;
-
-        Ok(jsonwebtoken::decode::<Jwt<P>>(token, key, &config.validation)?.claims)
-    }
-
-    /// **[不安全]** 在不验证签名的情况下解码 JWT 的载荷。
-    ///
-    /// # 警告
-    ///
-    /// **绝对不要**相信此函数返回的数据！因为它**没有验证** JWT 的签名。
-    /// 这意味着任何人都可以伪造这个 JWT 的内容。
-    ///
-    /// 此函数仅应用于需要查看 Token 内容的调试或日志记录场景。
-    /// 在任何与安全相关的逻辑中，都**必须**使用 [`Jwt::decode`]。
-    #[cfg(feature = "server-side")]
-    pub fn decode_unchecked(token: &str) -> Result<serde_json::Value, AuthError> {
-        let mut parts = token.split('.');
-        let _header = parts.next();
-        let payload = parts.next().ok_or(AuthError::TokenInvalid)?;
-
-        let decoded_payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload)?;
-        let json_value = serde_json::from_slice(&decoded_payload)?;
-
-        Ok(json_value)
     }
 }
 
@@ -490,7 +588,7 @@ impl HttpMethod {
     /// 同时，在这里，由于有两个例外：[`HttpMethod::Other`] 和 [`HttpMethod::All`] 这两个标记
     ///
     /// 它们两个一个代表其他请求（rfc规范之外的），一个代表所有的请求，包括 rfc 规范之外的，所以都视为不安全
-    pub fn read_only(self) -> bool {
+    pub fn safe(self) -> bool {
         match self {
             HttpMethod::Connect
             | HttpMethod::Get
