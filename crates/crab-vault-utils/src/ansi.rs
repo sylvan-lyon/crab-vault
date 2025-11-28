@@ -205,9 +205,8 @@ impl AnsiStyle {
 
     #[inline]
     pub fn with_font_option(mut self, font: Option<FontStyle>) -> Self {
-        match font {
-            Some(other) => self.font.options |= other.options,
-            None => {}
+        if let Some(other) = font {
+            self.font.options |= other.options
         }
         self
     }

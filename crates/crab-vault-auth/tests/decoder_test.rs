@@ -1,9 +1,7 @@
 #![cfg(feature = "server-side")]
 use std::collections::HashMap;
 
-use crab_vault_auth::{
-    error::AuthError, Jwt, JwtDecoder, JwtEncoder,
-};
+use crab_vault_auth::{Jwt, JwtDecoder, JwtEncoder, error::AuthError};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 
@@ -20,15 +18,14 @@ fn build_hs256_encoder_and_decoder(secret: &[u8]) -> (JwtEncoder, JwtDecoder) {
 
     // 构造 DecodingKey mapping (iss, kid) -> DecodingKey
     let mut dec_map: HashMap<(String, String), DecodingKey> = HashMap::new();
-    dec_map.insert(("issuer-xyz".to_string(), "kid1".to_string()), DecodingKey::from_secret(secret));
+    dec_map.insert(
+        ("issuer-xyz".to_string(), "kid1".to_string()),
+        DecodingKey::from_secret(secret),
+    );
 
     // 构造一个 JwtDecoder，并设置验证参数
-    let decoder = JwtDecoder::new()
-        .iss_kid_dec(dec_map)
-        .algorithms(&[Algorithm::HS256])
-        .authorized_issuer(&["issuer-xyz"])
-        .possible_audience(&["aud-1"])
-        .leeway(0);
+    let decoder =
+        JwtDecoder::new(dec_map, &[Algorithm::HS256], &["issuer-xyz"], &["aud-1"]).leeway(0);
 
     (encoder, decoder)
 }
@@ -47,7 +44,9 @@ fn decode_success_roundtrip() {
     let mut header = Header::new(Algorithm::HS256);
     header.kid = Some("kid1".into());
 
-    let token = encoder.encode(&header, &claims, "kid1").expect("encode should succeed");
+    let token = encoder
+        .encode(&header, &claims, "kid1")
+        .expect("encode should succeed");
 
     let decoded: Jwt<TestPayload> = decoder.decode(&token).expect("decode should succeed");
     assert_eq!(decoded.iss, "issuer-xyz");
@@ -61,12 +60,11 @@ fn decode_invalid_signature() {
     let (encoder, _) = build_hs256_encoder_and_decoder(b"signing-secret");
     // decoder 使用不同 secret
     let mut dec_map: HashMap<(String, String), DecodingKey> = HashMap::new();
-    dec_map.insert(("issuer-xyz".to_string(), "kid1".to_string()), DecodingKey::from_secret(b"different-secret"));
-    let decoder = JwtDecoder::new()
-        .iss_kid_dec(dec_map)
-        .algorithms(&[Algorithm::HS256])
-        .authorized_issuer(&["issuer-xyz"])
-        .possible_audience(&["aud-1"]);
+    dec_map.insert(
+        ("issuer-xyz".to_string(), "kid1".to_string()),
+        DecodingKey::from_secret(b"different-secret"),
+    );
+    let decoder = JwtDecoder::new(dec_map, &[Algorithm::HS256], &["issuer-xyz"], &["aud-1"]);
 
     let payload = TestPayload {
         message: "bad-sig".into(),
@@ -78,7 +76,9 @@ fn decode_invalid_signature() {
 
     let token = encoder.encode(&header, &claims, "kid1").expect("encode ok");
 
-    let err = decoder.decode::<TestPayload>(&token).expect_err("expected invalid signature");
+    let err = decoder
+        .decode::<TestPayload>(&token)
+        .expect_err("expected invalid signature");
     assert!(matches!(err, AuthError::InvalidSignature));
 }
 
@@ -88,7 +88,13 @@ fn decode_expired_token() {
     let (encoder, decoder) = build_hs256_encoder_and_decoder(secret);
 
     // 构造一个已经过期的 token（exp 设为过去）
-    let mut claims = Jwt::new("issuer-xyz", &["aud-1"], TestPayload { message: "expired".into() });
+    let mut claims = Jwt::new(
+        "issuer-xyz",
+        &["aud-1"],
+        TestPayload {
+            message: "expired".into(),
+        },
+    );
     // 让它在 10 秒前过期
     claims.exp = chrono::Utc::now().timestamp() - 10;
 
@@ -97,7 +103,9 @@ fn decode_expired_token() {
 
     let token = encoder.encode(&header, &claims, "kid1").expect("encode ok");
 
-    let err = decoder.decode::<TestPayload>(&token).expect_err("expected expired error");
+    let err = decoder
+        .decode::<TestPayload>(&token)
+        .expect_err("expected expired error");
     assert!(matches!(err, AuthError::TokenExpired));
 }
 
@@ -107,7 +115,13 @@ fn decode_nbf_not_yet_valid() {
     let (encoder, decoder) = build_hs256_encoder_and_decoder(secret);
 
     // 构造一个 nbf 在未来的 token
-    let mut claims = Jwt::new("issuer-xyz", &["aud-1"], TestPayload { message: "future".into() });
+    let mut claims = Jwt::new(
+        "issuer-xyz",
+        &["aud-1"],
+        TestPayload {
+            message: "future".into(),
+        },
+    );
     claims.nbf = (chrono::Utc::now() + chrono::Duration::seconds(60)).timestamp();
 
     let mut header = Header::new(Algorithm::HS256);
@@ -115,7 +129,9 @@ fn decode_nbf_not_yet_valid() {
 
     let token = encoder.encode(&header, &claims, "kid1").expect("encode ok");
 
-    let err = decoder.decode::<TestPayload>(&token).expect_err("expected not-yet-valid error");
+    let err = decoder
+        .decode::<TestPayload>(&token)
+        .expect_err("expected not-yet-valid error");
     assert!(matches!(err, AuthError::TokenNotYetValid));
 }
 
@@ -124,15 +140,25 @@ fn decode_missing_kid_in_header() {
     let secret = b"mkid-secret";
     let (encoder, decoder) = build_hs256_encoder_and_decoder(secret);
 
-    let claims = Jwt::new("issuer-xyz", &["aud-1"], TestPayload { message: "no-kid".into() });
+    let claims = Jwt::new(
+        "issuer-xyz",
+        &["aud-1"],
+        TestPayload {
+            message: "no-kid".into(),
+        },
+    );
 
     // header 不设置 kid
     let header = Header::new(Algorithm::HS256);
 
-    let token = encoder.encode(&header, &claims, "kid1").expect("encode ok (kid param ignored since header has none)");
+    let token = encoder
+        .encode(&header, &claims, "kid1")
+        .expect("encode ok (kid param ignored since header has none)");
 
     // decoder 首先尝试从 header 读取 kid，会发现没有并返回 MissingClaim("kid")
-    let err = decoder.decode::<TestPayload>(&token).expect_err("expected missing kid error");
+    let err = decoder
+        .decode::<TestPayload>(&token)
+        .expect_err("expected missing kid error");
     assert!(matches!(err, AuthError::MissingClaim(s) if s == "kid"));
 }
 
@@ -141,7 +167,9 @@ fn decode_unchecked_returns_payload_without_verification() {
     let secret = b"uc-secret";
     let (encoder, _decoder) = build_hs256_encoder_and_decoder(secret);
 
-    let payload = TestPayload { message: "unchecked".into() };
+    let payload = TestPayload {
+        message: "unchecked".into(),
+    };
     let claims = Jwt::new("issuer-xyz", &["aud-1"], payload.clone());
 
     let mut header = Header::new(Algorithm::HS256);

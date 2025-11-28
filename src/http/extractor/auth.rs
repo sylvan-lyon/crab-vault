@@ -23,7 +23,7 @@ where
             .get::<Permission>()
             .cloned()
             .map(PermissionExtractor)
-            .ok_or(AuthError::TokenInvalid)
+            .ok_or(AuthError::InvalidToken)
     }
 }
 

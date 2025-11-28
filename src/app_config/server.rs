@@ -190,11 +190,8 @@ impl TryFrom<JwtEncoderConfig> for JwtEncoder {
 }
 
 impl JwtEncoderConfig {
-    pub fn algs(&self) -> Vec<Algorithm> {
-        self.encoding_keys
-            .iter()
-            .map(|key| key.algorithm)
-            .collect()
+    pub fn algorithms(&self) -> Vec<Algorithm> {
+        self.encoding_keys.iter().map(|key| key.algorithm).collect()
     }
 
     pub fn kids(&self) -> Vec<String> {
@@ -252,13 +249,11 @@ impl TryFrom<JwtDecoderConfig> for JwtDecoder {
         }
 
         if errors.is_empty() {
-            Ok(JwtDecoder::new()
-                .iss_kid_dec(mapping)
-                .algorithms(&algorithms)
-                .authorized_issuer(&authorized_issuers)
-                .possible_audience(&aud)
-                .reject_tokens_expiring_in_less_than(reject_tokens_expiring_in_less_than)
-                .leeway(leeway))
+            Ok(
+                JwtDecoder::new(mapping, &algorithms, &authorized_issuers, &aud)
+                    .reject_tokens_expiring_in_less_than(reject_tokens_expiring_in_less_than)
+                    .leeway(leeway),
+            )
         } else {
             Err(errors)
         }

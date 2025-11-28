@@ -87,7 +87,7 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
     let aud = if args.audiences.is_some() {
         args.audiences.unwrap()
     } else {
-        jwt_encoder_config.audience().iter().cloned().collect()
+        jwt_encoder_config.audience().to_vec()
     };
 
     let payload = Permission::new_minimum()
@@ -101,9 +101,9 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
         .not_valid_in(Duration::seconds(args.nbf_offset));
 
     let mut header = {
-        let algs = jwt_encoder_config.algs();
-        let random_idx = random_range(0..algs.len());
-        Header::new(algs[random_idx])
+        let algorithms = jwt_encoder_config.algorithms();
+        let random_idx = random_range(0..algorithms.len());
+        Header::new(algorithms[random_idx])
     };
 
     header.kid = Some({
@@ -117,7 +117,7 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
         .encode(
             &header,
             &claims,
-            (&header.kid).as_ref().unwrap(),
+            header.kid.as_ref().unwrap(),
         )
         .map_err(|e| CliError::new(ErrorKind::Io, format!("JWT encoding failed: {e}"), None))?;
 

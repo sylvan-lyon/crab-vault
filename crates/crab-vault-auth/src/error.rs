@@ -46,7 +46,7 @@ pub enum AuthError {
     ),
 
     #[error("token is invalid")]
-    TokenInvalid,
+    InvalidToken,
 
     #[error("token has expired")]
     TokenExpired,
@@ -91,7 +91,10 @@ impl From<jsonwebtoken::errors::Error> for AuthError {
             InvalidSubject => AuthError::InvalidSubject,
             MissingRequiredClaim(claim) => AuthError::MissingClaim(claim),
             ImmatureSignature => AuthError::TokenNotYetValid,
-            InvalidToken => AuthError::TokenInvalid,
+            InvalidToken => AuthError::InvalidToken,
+            Base64(e) => AuthError::InvalidBase64(e),
+            Utf8(e) => AuthError::InvalidUtf8(e),
+            Json(e) => AuthError::InvalidJson(e),
 
             InvalidEcdsaKey => AuthError::InternalError("the secret given is not a valid ECDSA key".into()),
             InvalidRsaKey(_) => AuthError::InternalError("the secret given is not a valid RSA key".into()),
@@ -100,9 +103,6 @@ impl From<jsonwebtoken::errors::Error> for AuthError {
             InvalidKeyFormat => AuthError::InternalError("a key is provided with an invalid format".into()),
             InvalidAlgorithm => AuthError::InternalError("the algorithm in the header doesn't match the one passed to decode or the encoding/decoding key used doesn't match the alg requested".to_string()),
             MissingAlgorithm => AuthError::InternalError("the Validation struct does not contain at least 1 algorithm".into()),
-            Base64(e) => AuthError::InvalidBase64(e),
-            Utf8(e) => AuthError::InvalidUtf8(e),
-            Json(e) => AuthError::InvalidJson(e),
             Crypto(e) => AuthError::InternalError(format!("Something unspecified went wrong with crypto: {e}")),
             _ => todo!()
         }
@@ -115,7 +115,7 @@ impl IntoResponse for AuthError {
             AuthError::MissingAuthHeader
             | AuthError::InvalidKeyId
             | AuthError::InvalidAuthFormat
-            | AuthError::TokenInvalid
+            | AuthError::InvalidToken
             | AuthError::TokenExpired
             | AuthError::TokenNotYetValid
             | AuthError::InvalidAlgorithm(_)

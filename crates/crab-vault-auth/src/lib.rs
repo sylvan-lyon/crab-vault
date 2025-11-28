@@ -3,10 +3,10 @@ pub mod error;
 use clap::ValueEnum;
 use jsonwebtoken::{EncodingKey, Header};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::vec;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
-use std::collections::HashMap;
 
 #[cfg(feature = "server-side")]
 use base64::Engine;
@@ -37,7 +37,7 @@ pub struct JwtDecoder {
     validation: Validation,
 }
 
-/// 表示一个完整的 JWT，包含标准声明和自定义载荷。
+/// ## 表示一个完整的 JWT，包含标准声明和自定义载荷。
 ///
 /// 泛型参数 `P` 代表自定义的载荷 (Payload) 结构体。
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -65,39 +65,33 @@ pub struct Jwt<P> {
     pub load: P,
 }
 
-/// JWT 令牌的载荷 (Payload) 中用于权限控制的部分。
-///
-/// 因为这个 [`Permission`] 是每一个令牌中都有的，
-///
-/// 且一个令牌对应一次请求，一次请求对应一次操作，而这又是一个超级短期的令牌，
-///
-/// 所以我认为没有必要缓存校验时生成的 [`glob Pattern`](Pattern)。
-///
-/// 如果需要多次确认这个 [`Permission`] 能不能访问某一个数据，可以自己编译这个 glob 表达式。
+/// ## JWT 令牌的载荷 (Payload) 中用于权限控制的部分。
 #[derive(Serialize, Deserialize, Validate, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Permission {
-    /// 允许的操作列表。
+    /// ## 允许的操作列表。
     ///
-    /// 定义此令牌授权执行的具体 HTTP 方法。
+    /// 定义此令牌授权执行的具体 [`HTTP`](HttpMethod) 方法。
     pub methods: Vec<HttpMethod>,
 
-    /// 资源路径模式。
+    /// ## 资源路径模式。
     ///
     /// 定义此令牌可以访问的资源路径，支持通配符 `*` 和 `?` (Glob 模式)。
-    /// 例如: `/users/*` 或 `/files/???.txt`。
+    ///
     /// 如果是 None，那么表示这个令牌没有任何对象的操作权限
     #[validate(length(max = 128))]
     pub resource_pattern: Option<String>,
 
-    /// 允许上传的最大对象大小 (字节)。
+    /// ## 允许上传的最大对象大小 (字节)。
     ///
     /// `None` 表示没有限制。
     pub max_size: Option<usize>,
 
-    /// 允许的内容类型 (MIME types)。
+    /// ## 允许的内容类型 (MIME types)。
     ///
-    /// 支持通配符，例如 `image/*` 或 `*`。
+    /// 支持通配符，例如 `image/*` 或 `*` (Glob 模式)。
+    ///
+    /// 大小有限制，每一个通配模式不超过 128 字节、最多 8 个模式
     #[validate(custom(function = "Self::validate_content_type_pattern"))]
     pub allowed_content_types: Vec<String>,
 }
@@ -161,19 +155,50 @@ impl JwtEncoder {
 
 #[cfg(feature = "server-side")]
 impl JwtDecoder {
-    /// 这个函数构造出来的 [`JwtDecodeConfig`] 完全不可用！
+    /// ## 新建一个 [`JwtDecoder`]
     ///
-    /// 因为起码还需要需要设置 (aud, kid) -> [`DecodingKey`] 的映射、
+    /// ### 参数说明
     ///
-    /// validation 接受的算法、iss、自己认为的自己是哪个 aud
-    pub fn new() -> Self {
-        let mut validation = Validation::new(Algorithm::HS256);
+    /// - `mapping` `iss`、`kid` 到 [`DecodingKey`] 的映射，注意  [`mapping`](HashMap) 的联合主键的顺序是 (iss, kid)，别搞反了！
+    /// - `algorithms`    接受的算法
+    /// - `iss`     接受的令牌的签发人
+    /// - `aud`     接受的令牌中的 aud 值
+    ///
+    /// ### panic
+    ///
+    /// - 如果 `algorithms` 中一个算法都没有，即 `algorithms` 是一个空的切片
+    ///
+    /// ### 新建完成后可以通过以下函数修改相应的配置
+    ///
+    /// - [`iss_kid_dec`](JwtDecoder::iss_kid_dec)
+    /// - [`algorithms`](JwtDecoder::algorithms)
+    /// - [`authorized_issuer`](JwtDecoder::authorized_issuer)
+    /// - [`possible_audience`](JwtDecoder::possible_audience)
+    /// - [`leeway`](JwtDecoder::leeway)
+    /// - [`reject_tokens_expiring_in_less_than`](JwtDecoder::reject_tokens_expiring_in_less_than)
+    ///
+    /// ### 然后可以使用方法 [`decode`](JwtDecoder::decode) 来解码、校验一个 jwt
+    ///
+    pub fn new<T: ToString, U: ToString>(
+        mapping: HashMap<(String, String), DecodingKey>,
+        algorithms: &[Algorithm],
+        iss: &[T],
+        aud: &[U],
+    ) -> Self {
+        let mut validation = Validation::new(
+            *algorithms.first()
+                .expect(
+                    "You should provide at least one algorithm in your accepted algorithm slice!",
+                ),
+        );
         validation.validate_aud = true;
         validation.validate_exp = true;
         validation.validate_nbf = true;
-        validation.algorithms = vec![];
+        validation.algorithms = algorithms.to_vec();
         validation.reject_tokens_expiring_in_less_than = 0;
         validation.leeway = 60;
+        validation.set_issuer(iss);
+        validation.set_audience(aud);
 
         // 必须有下面的四个字段，否则视为非法 token，
         // jsonwebtoken 只接受下面的这些和 sub 字段，所以 iat 限制无法设置
@@ -181,12 +206,12 @@ impl JwtDecoder {
 
         validation.set_required_spec_claims(&["aud", "exp", "nbf", "iss"]);
         Self {
-            decoding_keys: HashMap::new(),
+            decoding_keys: mapping,
             validation,
         }
     }
 
-    /// 设置 (iss, kid) 到 [`DecodingKey`] 的映射
+    /// ## 设置 (iss, kid) 到 [`DecodingKey`] 的映射
     ///
     /// 注意  [`mapping`](HashMap) 的联合主键的顺序是 (iss, kid)，别搞反了！
     pub fn iss_kid_dec(mut self, mapping: HashMap<(String, String), DecodingKey>) -> Self {
@@ -194,56 +219,56 @@ impl JwtDecoder {
         self
     }
 
-    /// 设置接受的算法
-    pub fn algorithms(mut self, algs: &[Algorithm]) -> Self {
-        self.validation.algorithms = algs.iter().copied().collect();
+    /// ## 设置接受的算法
+    pub fn algorithms(mut self, algorithms: &[Algorithm]) -> Self {
+        self.validation.algorithms = algorithms.to_vec();
         self
     }
 
-    /// 设置接受的 issuer
+    /// ## 设置接受的 issuer
     #[inline]
     pub fn authorized_issuer<T: ToString>(mut self, iss: &[T]) -> Self {
         self.validation.set_issuer(iss);
         self
     }
 
-    /// 设置接受的 audience
+    /// ## 设置接受的 audience
     #[inline]
     pub fn possible_audience<T: ToString>(mut self, aud: &[T]) -> Self {
         self.validation.set_audience(aud);
         self
     }
 
-    /// 设置接受的 leeway
+    /// ## 设置接受的 leeway
     #[inline]
     pub fn leeway(mut self, leeway: u64) -> Self {
         self.validation.leeway = leeway;
         self
     }
 
-    /// 临期的 token 不予通过
+    /// ## 临期的 token 不予通过
     #[inline]
-    pub fn reject_tokens_expiring_in_less_than(mut self, tolerence: u64) -> Self {
-        self.validation.reject_tokens_expiring_in_less_than = tolerence;
+    pub fn reject_tokens_expiring_in_less_than(mut self, tolerance: u64) -> Self {
+        self.validation.reject_tokens_expiring_in_less_than = tolerance;
         self
     }
 
-    /// 使用给定的配置解码并验证一个字符串形式的 Token。
+    /// ## 使用给定的配置解码并验证一个字符串形式的 Token。
     ///
     /// 此函数会执行完整的验证流程，包括：
     /// 1. 检查签名是否有效。
     /// 2. 验证 `exp` 和 `nbf` 时间戳。
     /// 3. 根据 `config.validation` 中的设置验证 `iss` 和 `aud`。
-    /// 
+    ///
     /// ### 注意这个函数的泛型参数是 `P`，返回值类型是 `Jwt<P>`，
-    /// 
+    ///
     /// #### 所以需要这样写：
-    /// 
+    ///
     /// ```rust,ignore
     /// let jwt = decoder.decode::<Permission>(token)?;
     /// // 这个 jwt 解析出来的类型是 Jwt<Permission>
     /// ```
-    /// 
+    ///
     /// #### 而不是这样：
     /// ```rust,ignore
     /// let jwt = decoder.decode::<Jwt<Permission>>(token)?;
@@ -268,7 +293,7 @@ impl JwtDecoder {
         Ok(jsonwebtoken::decode::<Jwt<P>>(token, key, &self.validation)?.claims)
     }
 
-    /// **[不安全]** 在不验证签名的情况下解码 JWT 的载荷。
+    /// ## **\[不安全\]** 在不验证签名的情况下解码 JWT 的载荷。
     ///
     /// # 警告
     ///
@@ -281,7 +306,7 @@ impl JwtDecoder {
     pub fn decode_unchecked(token: &str) -> Result<serde_json::Value, AuthError> {
         let mut parts = token.split('.');
         let _header = parts.next();
-        let payload = parts.next().ok_or(AuthError::TokenInvalid)?;
+        let payload = parts.next().ok_or(AuthError::InvalidToken)?;
 
         let decoded_payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(payload)?;
         let json_value = serde_json::from_slice(&decoded_payload)?;
@@ -363,12 +388,18 @@ impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
     }
 }
 
+impl Default for Permission {
+    fn default() -> Self {
+        Self::new_minimum()
+    }
+}
+
 impl Permission {
-    fn validate_content_type_pattern(patterns: &Vec<String>) -> Result<(), ValidationError> {
-        if patterns.len() <= 8 && !patterns.iter().any(|s| s.len() > 128) {
-            return Ok(());
+    fn validate_content_type_pattern(patterns: &[String]) -> Result<(), ValidationError> {
+        if patterns.len() <= 8 && patterns.iter().all(|s| s.len() <= 128) {
+            Ok(())
         } else {
-            return Err(ValidationError::new("pattern too long/much for parsing"));
+            Err(ValidationError::new("pattern too long/much for parsing"))
         }
     }
 
@@ -380,6 +411,8 @@ impl Permission {
     /// 创建一个 <u>**拥有所有权限**</u> 的 `root` `Permission`。
     ///
     /// ### 这个操作应当尽量少用，因为这个获取这个权限就意味着该用户能够读写所有的资源 (所有！)
+    ///
+    /// 默认值
     ///
     /// - 允许操作: [`HttpMethod::All`]
     /// - 允许资源: [`Some("*".to_string())`](Some) (所有路径)
@@ -398,7 +431,9 @@ impl Permission {
     ///
     /// 直接签发这个 [`Permission`] 将导致完全无法访问任何内容
     ///
-    /// - 允许操作: 无
+    /// 默认值
+    ///
+    /// - 允许操作: 无（一个空的 vec）
     /// - 允许资源: [`None`] (所有路径都不允许)
     /// - 大小限制：[`Some(0)`](Some) (上传的最大包大小为 0 字节)
     /// - MIME: **所有都不行**
@@ -495,7 +530,7 @@ impl Permission {
 
 #[cfg(feature = "server-side")]
 impl CompiledPermission {
-    /// 检查此权限是否允许执行给定的 HTTP 方法。
+    /// ## 检查此权限是否允许执行给定的 HTTP 方法。
     ///
     /// 如果 `operations` 包含 `HttpMethod::All` 或指定的 `method`，则返回 `true`。
     pub fn can_perform_method<T>(&self, method: T) -> bool
@@ -505,11 +540,12 @@ impl CompiledPermission {
         self.methods.contains(&HttpMethod::All) || self.methods.contains(&method.into())
     }
 
-    /// 检查此权限是否能访问给定的资源路径。
+    /// ## 检查此权限是否能访问给定的资源路径。
     ///
     /// 使用 `resource_pattern` 对 `path` 进行 Glob 匹配。
-    /// 如果 `resource_pattern` 不是一个有效的 Glob 模式，会安全地返回 `false`。
-    /// 如果是一个 [`None`] 也会返回 false，因为规定了 [`None`] 表示所有都不能访问
+    ///
+    /// - 如果 `resource_pattern` 不是一个有效的 Glob 模式，会安全地返回 `false`。
+    /// - 如果是一个 [`None`] 也会返回 false，因为规定了 [`None`] 表示所有都不能访问
     pub fn can_access(&self, path: &str) -> bool {
         match &self.resource_pattern_cache {
             Some(pat) => pat.matches(path),
@@ -517,14 +553,15 @@ impl CompiledPermission {
         }
     }
 
-    /// 检查给定的大小是否在 `max_size` 的限制内。
+    /// ## 检查给定的大小是否在 `max_size` 的限制内。
     ///
-    /// 如果 `max_size` 是 `None` (无限制)，或者 `size` 小于等于限制，则返回 `true`。
+    /// - 如果 `max_size` 是 `None` (无限制)
+    /// - 或者 `size` 小于等于限制，则返回 `true`。
     pub fn check_size(&self, size: usize) -> bool {
         self.max_size.is_none_or(|limit| size <= limit)
     }
 
-    /// 检查给定的内容类型是否被允许。
+    /// ## 检查给定的内容类型是否被允许。
     ///
     /// 遍历 `allowed_content_types`，对每个模式进行 Glob 匹配。
     pub fn check_content_type(&self, content_type: &str) -> bool {
@@ -536,16 +573,18 @@ impl CompiledPermission {
 
 impl From<&axum::http::Method> for HttpMethod {
     fn from(value: &axum::http::Method) -> Self {
+        use axum::http::Method;
+
         match *value {
-            axum::http::Method::GET => Self::Get,
-            axum::http::Method::POST => Self::Post,
-            axum::http::Method::PUT => Self::Put,
-            axum::http::Method::PATCH => Self::Patch,
-            axum::http::Method::DELETE => Self::Delete,
-            axum::http::Method::HEAD => Self::Head,
-            axum::http::Method::OPTIONS => Self::Options,
-            axum::http::Method::TRACE => Self::Trace,
-            axum::http::Method::CONNECT => Self::Connect,
+            Method::GET => Self::Get,
+            Method::POST => Self::Post,
+            Method::PUT => Self::Put,
+            Method::PATCH => Self::Patch,
+            Method::DELETE => Self::Delete,
+            Method::HEAD => Self::Head,
+            Method::OPTIONS => Self::Options,
+            Method::TRACE => Self::Trace,
+            Method::CONNECT => Self::Connect,
             _ => Self::Other,
         }
     }
@@ -553,18 +592,7 @@ impl From<&axum::http::Method> for HttpMethod {
 
 impl From<axum::http::Method> for HttpMethod {
     fn from(value: axum::http::Method) -> Self {
-        match value {
-            axum::http::Method::GET => Self::Get,
-            axum::http::Method::POST => Self::Post,
-            axum::http::Method::PUT => Self::Put,
-            axum::http::Method::PATCH => Self::Patch,
-            axum::http::Method::DELETE => Self::Delete,
-            axum::http::Method::HEAD => Self::Head,
-            axum::http::Method::OPTIONS => Self::Options,
-            axum::http::Method::TRACE => Self::Trace,
-            axum::http::Method::CONNECT => Self::Connect,
-            _ => Self::Other,
-        }
+        Self::from(&value)
     }
 }
 

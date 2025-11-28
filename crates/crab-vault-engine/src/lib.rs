@@ -47,13 +47,13 @@ pub trait DataEngine: Sized {
     fn create_bucket(
         &self,
         bucket_name: &str,
-    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
+    ) -> impl Future<Output = EngineResult<()>> + Send;
 
     /// 删除一个 bucket，此操作是幂等的
     fn delete_bucket(
         &self,
         bucket_name: &str,
-    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
+    ) -> impl Future<Output = EngineResult<()>> + Send;
 
     /// 创建一个 object，此操作是幂等的
     fn create_object(
@@ -61,21 +61,21 @@ pub trait DataEngine: Sized {
         bucket_name: &str,
         object_name: &str,
         data: &[u8],
-    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
+    ) -> impl Future<Output = EngineResult<()>> + Send;
 
     /// 读取一个 object，此操作是幂等的
     fn read_object(
         &self,
         bucket_name: &str,
         object_name: &str,
-    ) -> impl std::future::Future<Output = EngineResult<Vec<u8>>> + Send;
+    ) -> impl Future<Output = EngineResult<Vec<u8>>> + Send;
 
     /// 删除一个 object，此操作是幂等的
     fn delete_object(
         &self,
         bucket_name: &str,
         object_name: &str,
-    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
+    ) -> impl Future<Output = EngineResult<()>> + Send;
 }
 
 /// 此 trait 定义了 metadata 从何处来
@@ -88,31 +88,31 @@ pub trait MetaEngine: Sized {
     fn create_bucket_meta(
         &self,
         meta: &BucketMeta,
-    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
+    ) -> impl Future<Output = EngineResult<()>> + Send;
 
     /// 获取指定 Bucket 的元数据
     fn read_bucket_meta(
         &self,
         bucket_name: &str,
-    ) -> impl std::future::Future<Output = EngineResult<BucketMeta>> + Send;
+    ) -> impl Future<Output = EngineResult<BucketMeta>> + Send;
 
     /// 删除一个 Bucket 元数据 (要求 Bucket 为空)
     fn delete_bucket_meta(
         &self,
         bucket_name: &str,
-    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
+    ) -> impl Future<Output = EngineResult<()>> + Send;
 
     /// 列出所有的 Bucket 的元数据
     fn list_buckets_meta(
         &self,
-    ) -> impl std::future::Future<Output = EngineResult<Vec<BucketMeta>>> + Send;
+    ) -> impl Future<Output = EngineResult<Vec<BucketMeta>>> + Send;
 
     /// 更新一个 object 的 last_update 字段
     fn touch_object(
         &self,
         bucket_name: &str,
         object_name: &str,
-    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
+    ) -> impl Future<Output = EngineResult<()>> + Send;
 
     // --- Object Operations ---
 
@@ -120,31 +120,31 @@ pub trait MetaEngine: Sized {
     fn create_object_meta(
         &self,
         meta: &ObjectMeta,
-    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
+    ) -> impl Future<Output = EngineResult<()>> + Send;
 
     /// 获取指定 Object 的元数据
     fn read_object_meta(
         &self,
         bucket_name: &str,
         object_name: &str,
-    ) -> impl std::future::Future<Output = EngineResult<ObjectMeta>> + Send;
+    ) -> impl Future<Output = EngineResult<ObjectMeta>> + Send;
 
     /// 删除一个 Object 的元数据
     fn delete_object_meta(
         &self,
         bucket_name: &str,
         object_name: &str,
-    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
+    ) -> impl Future<Output = EngineResult<()>> + Send;
 
     /// 列出指定 Bucket 内的所有 Object 元数据
     fn list_objects_meta(
         &self,
         bucket_name: &str,
-    ) -> impl std::future::Future<Output = EngineResult<Vec<ObjectMeta>>> + Send;
+    ) -> impl Future<Output = EngineResult<Vec<ObjectMeta>>> + Send;
 
     /// 更新一个 object 的 last_update 字段
     fn touch_bucket(
         &self,
         bucket_name: &str,
-    ) -> impl std::future::Future<Output = EngineResult<()>> + Send;
+    ) -> impl Future<Output = EngineResult<()>> + Send;
 }

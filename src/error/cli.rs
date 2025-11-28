@@ -18,6 +18,7 @@ pub struct CliError {
     source: Vec<String>,
 }
 
+#[derive(Default)]
 pub struct MultiCliError {
     errors: Vec<CliError>,
 }
@@ -155,7 +156,7 @@ impl From<AuthError> for CliError {
             AuthError::MissingAuthHeader => ("missing auth header".into(), None),
             AuthError::InvalidAuthFormat => ("invalid token format".into(), None),
             AuthError::InvalidKeyId => ("invalid key id".into(), None),
-            AuthError::TokenInvalid => ("token is invalid".into(), None),
+            AuthError::InvalidToken => ("token is invalid".into(), None),
             AuthError::TokenExpired => ("token expired".into(), None),
             AuthError::TokenNotYetValid => ("token not yet valid".into(), None),
             AuthError::InvalidSignature => ("token signature is invalid".into(), None),
