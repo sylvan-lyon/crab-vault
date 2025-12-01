@@ -134,7 +134,7 @@ impl IntoResponse for AuthError {
             AuthError::InternalError(_) => StatusCode::UNAUTHORIZED,
         };
 
-        (status_code).into_response()
+        status_code.into_response()
     }
 }
 

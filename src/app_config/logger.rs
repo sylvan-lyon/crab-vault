@@ -1,4 +1,4 @@
-use crab_vault_logger::LogLevel;
+use crab_vault::logger::LogLevel;
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize)]

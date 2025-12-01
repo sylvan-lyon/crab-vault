@@ -13,7 +13,7 @@ use axum::{
     },
     response::{IntoResponse, Response},
 };
-use crab_vault_auth::{HttpMethod, Jwt, JwtDecoder, Permission, error::AuthError};
+use crab_vault::auth::{HttpMethod, Jwt, JwtDecoder, Permission, error::AuthError};
 use glob::Pattern;
 use tokio::sync::OnceCell;
 use tower::{Layer, Service};

@@ -22,12 +22,20 @@ http://your-server-address:32767
 我们支持两种元数据：
 
 1. **系统元数据**: 使用标准的 HTTP 头部，例如 `Content-Type`, `ETag` 等。
-
-2. **用户元数据**: 您可以通过添加 `x-crab-meta-` 前缀的自定义请求头来存储您自己的键值对信息。
-
-    * 例如：`x-crab-meta-user-id: 123`，`x-crab-meta-source: mobile-upload`。
-
+2. **用户元数据**: 您可以通过添加 `X-Crab-Vault-User-Meta` 自定义请求头来存储您自己的键值对信息。
+    * 例如：`X-Crab-Vault-User-Meta:{"position":"Chongqing China","shot_on":"International Labour Day"}`。
+    * 注意：这个头部的值必须为 **BASE64_STANDARD** 编码的，<u>往后的实例为了可读性，我们都使用未编码的原始数据</u>
+    * 同时为了方便，您传递或者我返回时，这个用户自定义信息均位于 `X-Crab-Vault-User-Meta` 头部。
     * 在响应中，这些元数据也会以相同的头部格式返回。
+    * 默认情况下，如果不指定头部，我们将把 `X-Crab-Vault-User-Meta` 设置为空的对象，如对于桶，不指定的话大概会返回下面的内容
+```json
+{
+    "name": "some",
+    "created-at": "2025-08-20T05:02:40.777065800Z",
+    "updated-at": "2025-08-20T05:02:40.777068400Z",
+    "user-meta": {}
+}
+```
 
 ### ❌ 错误处理
 
@@ -55,13 +63,7 @@ http://your-server-address:32767
 * **描述**: 如果存储桶不存在，则创建它。如果已存在，此操作不会产生任何影响。
 * **路径参数**:
     * `bucket_name` (string, required): 您想要创建的存储桶的名称。
-* **请求体** (可选): 一个 JSON 对象，用于存储该存储桶的用户元数据。
-```json
-{
-    "owner": "team-alpha",
-    "region": "cn-north-1"
-}
-```
+* **请求头** (可选): `X-Crab-Vault-User-Meta`。
 * **成功响应**:
 * `201 Created`: 存储桶被成功创建。
 * **cURL 示例**:
@@ -69,7 +71,7 @@ http://your-server-address:32767
 # 创建一个名为 "my-awesome-bucket" 的存储桶并附加元数据
 curl -X PUT http://localhost:3000/my-awesome-bucket \
     -H "Content-Type: application/json" \
-    -d '{"project": "Project Phoenix"}'
+    -H "X-Crab-Vault-User-Meta: {\"project\":\"Project Phoenix\"}"
 ```
 
 ### 2. 删除存储桶 (Delete a Bucket)
@@ -105,7 +107,7 @@ curl -X DELETE http://localhost:32767/my-awesome-bucket
     * `object_name` (string, required): 对象的完整路径名，例如 `images/avatars/user123.jpg`。
 * **请求头**:
     * `Content-Type` (string, optional): 对象的 MIME 类型，默认为 `application/octet-stream`。
-    * `x-crab-meta-*` (string, optional): 任意数量的用户自定义元数据。
+    * `X-Crab-Vault-User-Meta` (string, optional): JSON 形式的用户自定义元数据。
 * **请求体**: 对象的原始二进制数据。
 * **成功响应**:
     * `201 Created`: 对象被成功创建或更新。
@@ -114,8 +116,7 @@ curl -X DELETE http://localhost:32767/my-awesome-bucket
 # 上传一个图片，并附带自定义元数据
 curl -X PUT http://localhost:3000/my-awesome-bucket/photos/paris.jpg \
     -H "Content-Type: image/jpeg" \
-    -H "x-crab-meta-author: John Doe" \
-    -H "x-crab-meta-location: Paris" \
+    -H "X-Crab-Vault-User-Meta: {"name":\"John Doe\"}" \
     --data-binary "@path/to/your/local/image.jpg"
 ```
 
@@ -132,7 +133,7 @@ curl -X PUT http://localhost:3000/my-awesome-bucket/photos/paris.jpg \
 # 下载对象并显示响应头信息 (-v)
 curl -v http://localhost:3000/my-awesome-bucket/photos/paris.jpg -o downloaded_paris.jpg
 ```
-您将在终端输出中看到类似 `ETag`, `Content-Type`, `x-crab-meta-author` 等响应头。
+您将在终端输出中看到类似 `ETag`, `Content-Type`, `X-Crab-Vault-User-Meta` 等响应头。
 
 ### 3. 🔎 获取对象元数据 (Get Object Metadata)
 
@@ -153,21 +154,16 @@ curl -I http://localhost:3000/my-awesome-bucket/photos/paris.jpg
 在不重新上传整个对象数据的情况下，修改一个对象的 **用户元数据**。
 
 * **Endpoint**: `PATCH /{bucket_name}/{*object_name}`
-* **描述**: 请求体中的 JSON 对象将被合并到现有的用户元数据中。已有的键将被更新，新的键将被添加。
-* **请求体**: 一个 JSON 对象。
-```json
-{
-    "reviewed": "true",
-    "location": "Eiffel Tower"
-}
-```
+* **描述**: 请求体中的 JSON 对象将被合并到现有的用户元数据中。已有的键将被更新，新的键将被添加，如果想删除旧的键，请将对应的值置为空
+* **请求体**: 无。
 * **成功响应**:
     * `200 OK`: 元数据更新成功。
 * **cURL 示例**:
 ```bash
 curl -X PATCH http://localhost:3000/my-awesome-bucket/photos/paris.jpg \
--H "Content-Type: application/json" \
--d '{"reviewed": "true", "tags": "vacation,2025"}'
+    -H "Content-Type: application/json" \
+    -H "X-Crab-Vault-User-Meta: {\"reviewed\":true,\"location\":\"Eiffel Tower\"}"
+"
 ```
 
 ### 5. 🗑️ 删除对象 (Delete an Object)
@@ -201,7 +197,7 @@ curl -X DELETE http://localhost:3000/my-awesome-bucket/photos/paris.jpg
 curl -v http://localhost:32767
 ```
 
-- **响应示例**
+- **响应示例（头部的 X-Crab-Vault-User-Meta）**
 
 ```json
 [
@@ -240,7 +236,7 @@ curl -v http://localhost:32767
 curl -v http://localhost:32767/sylvan
 ```
 
-- **响应示例**
+- **响应示例（头部的 X-Crab-Vault-User-Meta）**
 
 ```json
 [

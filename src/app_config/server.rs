@@ -5,8 +5,8 @@ use std::{
 
 use base64::{Engine, prelude::BASE64_STANDARD};
 use clap::error::ErrorKind;
-use crab_vault_auth::JwtDecoder;
-use crab_vault_auth::{HttpMethod, JwtEncoder};
+use crab_vault::auth::JwtDecoder;
+use crab_vault::auth::{HttpMethod, JwtEncoder};
 use glob::Pattern;
 use jsonwebtoken::*;
 use serde::{Deserialize, Serialize};

@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 
 use crate::error::EngineResult;
 
@@ -15,10 +14,13 @@ pub type MetaSource = fs::FsMetaEngine;
 #[serde(rename_all = "kebab-case")]
 pub struct BucketMeta {
     pub name: String,
+
     #[serde(alias = "createdAt")]
     pub created_at: DateTime<Utc>,
+
     #[serde(alias = "updatedAt")]
     pub updated_at: DateTime<Utc>,
+
     pub user_meta: serde_json::Value,
 }
 
@@ -31,31 +33,30 @@ pub struct ObjectMeta {
     pub size: u64,
     pub content_type: String,
     pub etag: String,
+
     #[serde(alias = "createdAt")]
     pub created_at: DateTime<Utc>,
+
     #[serde(alias = "updatedAt")]
     pub updated_at: DateTime<Utc>,
+
     pub user_meta: serde_json::Value,
 }
 
-/// 此 trait 定义了 object 从何处来
+/// 此 trait 定义了 object 从何处来，所有的操作，都是幂等的
 pub trait DataEngine: Sized {
+    type Uri: ?Sized;
+
     /// 创建一个新的实现了 [`DataEngine`] 的实例
-    fn new<P: AsRef<Path>>(base_dir: P) -> EngineResult<Self>;
+    fn new<T: AsRef<Self::Uri>>(base_dir: T) -> EngineResult<Self>;
 
-    /// 创建一个 bucket，此操作是幂等的
-    fn create_bucket(
-        &self,
-        bucket_name: &str,
-    ) -> impl Future<Output = EngineResult<()>> + Send;
+    /// 创建一个 bucket
+    fn create_bucket(&self, bucket_name: &str) -> impl Future<Output = EngineResult<()>> + Send;
 
-    /// 删除一个 bucket，此操作是幂等的
-    fn delete_bucket(
-        &self,
-        bucket_name: &str,
-    ) -> impl Future<Output = EngineResult<()>> + Send;
+    /// 删除一个 bucket
+    fn delete_bucket(&self, bucket_name: &str) -> impl Future<Output = EngineResult<()>> + Send;
 
-    /// 创建一个 object，此操作是幂等的
+    /// 创建一个 object
     fn create_object(
         &self,
         bucket_name: &str,
@@ -63,14 +64,14 @@ pub trait DataEngine: Sized {
         data: &[u8],
     ) -> impl Future<Output = EngineResult<()>> + Send;
 
-    /// 读取一个 object，此操作是幂等的
+    /// 读取一个 object
     fn read_object(
         &self,
         bucket_name: &str,
         object_name: &str,
     ) -> impl Future<Output = EngineResult<Vec<u8>>> + Send;
 
-    /// 删除一个 object，此操作是幂等的
+    /// 删除一个 object
     fn delete_object(
         &self,
         bucket_name: &str,
@@ -78,9 +79,11 @@ pub trait DataEngine: Sized {
     ) -> impl Future<Output = EngineResult<()>> + Send;
 }
 
-/// 此 trait 定义了 metadata 从何处来
+/// 此 trait 定义了 metadata 从何处来，所有的操作，都是幂等的
 pub trait MetaEngine: Sized {
-    fn new<P: AsRef<Path>>(base_dir: P) -> EngineResult<Self>;
+    type Uri: ?Sized;
+
+    fn new<T: AsRef<Self::Uri>>(base_dir: T) -> EngineResult<Self>;
 
     // --- Bucket Operations ---
 
@@ -103,9 +106,7 @@ pub trait MetaEngine: Sized {
     ) -> impl Future<Output = EngineResult<()>> + Send;
 
     /// 列出所有的 Bucket 的元数据
-    fn list_buckets_meta(
-        &self,
-    ) -> impl Future<Output = EngineResult<Vec<BucketMeta>>> + Send;
+    fn list_buckets_meta(&self) -> impl Future<Output = EngineResult<Vec<BucketMeta>>> + Send;
 
     /// 更新一个 object 的 last_update 字段
     fn touch_object(
@@ -143,8 +144,5 @@ pub trait MetaEngine: Sized {
     ) -> impl Future<Output = EngineResult<Vec<ObjectMeta>>> + Send;
 
     /// 更新一个 object 的 last_update 字段
-    fn touch_bucket(
-        &self,
-        bucket_name: &str,
-    ) -> impl Future<Output = EngineResult<()>> + Send;
+    fn touch_bucket(&self, bucket_name: &str) -> impl Future<Output = EngineResult<()>> + Send;
 }

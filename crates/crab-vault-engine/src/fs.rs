@@ -34,6 +34,8 @@ fn io_error<P: AsRef<Path> + ?Sized>(e: std::io::Error, path: &P) -> EngineError
 }
 
 impl DataEngine for FsDataEngine {
+    type Uri = Path;
+
     fn new<P: AsRef<Path>>(base_dir: P) -> EngineResult<Self> {
         let base_dir = base_dir.as_ref().to_path_buf();
         std::fs::create_dir_all(&base_dir).map_err(|e| io_error(e, &base_dir))?;
@@ -191,6 +193,8 @@ async fn list_meta_from_dir<T: DeserializeOwned>(dir_path: &Path) -> EngineResul
 }
 
 impl MetaEngine for FsMetaEngine {
+    type Uri = Path;
+
     fn new<P: AsRef<Path>>(base_dir: P) -> EngineResult<Self> {
         let base_dir = base_dir.as_ref().to_path_buf();
         // 在初始化时创建元数据根目录

@@ -1,12 +1,15 @@
-use axum::{extract::FromRequestParts, http::{header, request::Parts}};
-use base64::{prelude::BASE64_STANDARD, Engine};
+use axum::{
+    extract::FromRequestParts,
+    http::{header, request::Parts},
+};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use bytes::Bytes;
 use chrono::Utc;
-use crab_vault_engine::ObjectMeta;
+use crab_vault::engine::ObjectMeta;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use crate::{error::api::ApiError, http::USER_META_PREFIX};
+use crate::{error::api::ApiError, http::USER_META_HEADER_KEY};
 
 /// 从请求头中提取元数据，用于创建新的 ObjectMeta。
 #[derive(Debug)]
@@ -25,44 +28,47 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
         // 从路径中获取 bucket 和 object 名称
-        let path_params: Vec<&str> = parts
+        let path_params: Vec<_> = parts
             .uri
             .path()
             .split('/')
             .filter(|s| !s.is_empty())
             .collect();
+
         if path_params.len() < 2 {
             return Err(ApiError::UriInvalid);
         }
+
         let bucket_name = path_params[0].to_string();
         let object_name = path_params[1..].join("/");
 
-        let headers = &parts.headers;
-        let content_type = headers
+        let content_type = (&parts.headers)
             .get(header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
+            // octet-stream 是默认值，如果没有提供 content type
             .unwrap_or("application/octet-stream")
             .to_string();
 
-        let mut user_meta_map = serde_json::Map::new();
-        for (key, value) in headers.iter() {
-            if let Some(key_str) = key.as_str().strip_prefix(USER_META_PREFIX)
-                && let Ok(value_str) = value.to_str() {
-                    user_meta_map.insert(key_str.to_string(), json!(value_str));
-                }
-        }
+        let user_meta = (&parts.headers)
+            .get(USER_META_HEADER_KEY)
+            // 由于是客户端传过来的，我们无视这些问题，全部用 ok() 给他撇了
+            .and_then(|raw_value| raw_value.to_str().ok())
+            .and_then(|b64_value| BASE64_STANDARD.decode(b64_value).ok())
+            .and_then(|str_value| serde_json::from_slice(&str_value).ok())
+            // 默认值设置为空 JSON 对象
+            .unwrap_or(json!({}));
 
         Ok(Self {
             bucket_name,
             object_name,
             content_type,
-            user_meta: user_meta_map.into(),
+            user_meta,
         })
     }
 }
 
 impl NewObjectMetaExtractor {
-    /// 结合请求体数据，最终生成完整的 ObjectMeta
+    /// 结合请求体数据，最终生成完整的 [`ObjectMeta`]
     pub fn into_meta(self, data: &Bytes) -> ObjectMeta {
         ObjectMeta {
             object_name: self.object_name,

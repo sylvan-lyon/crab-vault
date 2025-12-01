@@ -4,7 +4,7 @@ use axum::{routing::MethodRouter, Router};
 
 use crate::http::middleware::auth::AuthLayer;
 
-use crab_vault_engine::{DataSource, MetaSource};
+use crab_vault::engine::{DataSource, MetaSource};
 
 mod handler;
 mod response;

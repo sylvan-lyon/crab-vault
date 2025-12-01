@@ -1,6 +1,6 @@
 use crate::app_config;
 use crate::error::cli::{CliError, MultiCliError};
-use crab_vault_auth::{HttpMethod, Jwt, JwtDecoder, JwtEncoder, Permission};
+use crab_vault::auth::{HttpMethod, Jwt, JwtDecoder, JwtEncoder, Permission};
 
 use chrono::Duration;
 use clap::error::ErrorKind;
@@ -114,11 +114,7 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
 
     // 编码 JWT
     let token = jwt_encoder
-        .encode(
-            &header,
-            &claims,
-            header.kid.as_ref().unwrap(),
-        )
+        .encode(&header, &claims, header.kid.as_ref().unwrap())
         .map_err(|e| CliError::new(ErrorKind::Io, format!("JWT encoding failed: {e}"), None))?;
 
     println!("{}", token);

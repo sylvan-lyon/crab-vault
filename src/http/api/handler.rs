@@ -5,14 +5,16 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-use crate::{
-    http::{
-        api::{response::{BucketMetaResponse, ObjectMetaResponse}, util::merge_json_value, ApiState},
-        extractor::{auth::RestrictedBytes, meta::NewObjectMetaExtractor},
+use crate::http::{
+    api::{
+        ApiState,
+        response::{BucketMetaResponse, ObjectMetaResponse},
+        util::merge_json_value,
     },
+    extractor::{auth::RestrictedBytes, meta::NewObjectMetaExtractor},
 };
 
-use crab_vault_engine::{error::EngineResult, *, DataEngine, MetaEngine};
+use crab_vault::engine::{error::EngineResult, *};
 
 // --- Bucket Handlers ---
 #[debug_handler]
@@ -171,6 +173,7 @@ pub(super) async fn delete_object(
         .data_src
         .delete_object(&bucket_name, &object_name)
         .await?;
+
     state
         .meta_src
         .delete_object_meta(&bucket_name, &object_name)

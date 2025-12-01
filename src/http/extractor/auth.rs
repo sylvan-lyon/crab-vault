@@ -4,7 +4,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use bytes::Bytes;
-use crab_vault_auth::{Permission, error::AuthError};
+use crab_vault::auth::{Permission, error::AuthError};
 
 use crate::error::api::ApiError;
 

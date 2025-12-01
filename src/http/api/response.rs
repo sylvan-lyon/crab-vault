@@ -1,15 +1,20 @@
-use axum::{http::{header, HeaderMap, HeaderValue, StatusCode}, response::{IntoResponse, Response}};
-use crab_vault_engine::{BucketMeta, ObjectMeta};
+use axum::{
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode, header},
+    response::{IntoResponse, Response},
+};
+use base64::{Engine, prelude::BASE64_STANDARD};
+use crab_vault::engine::{BucketMeta, ObjectMeta};
 use serde::Serialize;
-
-use crate::{http::USER_META_PREFIX};
-
-
 
 /// 一个自定义的响应类型，它将元数据放入 Headers，数据放入 Body。
 pub struct ObjectMetaResponse {
     meta: ObjectMeta,
     data: Option<Vec<u8>>, // Optional, because HEAD requests have no body
+}
+
+#[derive(Serialize)]
+pub struct BucketMetaResponse {
+    pub meta: BucketMeta,
 }
 
 impl ObjectMetaResponse {
@@ -49,10 +54,6 @@ impl IntoResponse for ObjectMetaResponse {
     }
 }
 
-#[derive(Serialize)]
-pub struct BucketMetaResponse {
-    pub meta: BucketMeta,
-}
 
 impl BucketMetaResponse {
     pub fn new(meta: BucketMeta) -> Self {
@@ -65,7 +66,7 @@ impl IntoResponse for BucketMetaResponse {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::LAST_MODIFIED,
-            HeaderValue::from_str(&self.meta.updated_at.to_rfc2822()).unwrap(),
+            HeaderValue::from_bytes(&self.meta.updated_at.to_rfc2822().as_bytes()).unwrap(),
         );
 
         let headers = append_user_mata_to_headers(self.meta.user_meta, headers);
@@ -75,18 +76,12 @@ impl IntoResponse for BucketMetaResponse {
 }
 
 pub fn append_user_mata_to_headers(value: serde_json::Value, mut headers: HeaderMap) -> HeaderMap {
-    if let serde_json::Value::Object(map) = value {
-        for (key, value) in map {
-            if let Some(value_str) = value.as_str() {
-                let header_key = format!("{}{}", USER_META_PREFIX, key);
-                if let Ok(header_value) = HeaderValue::from_str(value_str) {
-                    headers.insert(
-                        axum::http::HeaderName::from_bytes(header_key.as_bytes()).unwrap(),
-                        header_value,
-                    );
-                }
-            }
-        }
+    if let Ok(header_name) = HeaderName::from_bytes("x-crab-vault-user-meta".as_bytes())
+        && let Ok(json_string) = serde_json::to_string(&value)
+        && let Ok(header_value) = HeaderValue::from_str(&BASE64_STANDARD.encode(json_string))
+    {
+        headers.insert(header_name, header_value);
     }
+
     headers
 }

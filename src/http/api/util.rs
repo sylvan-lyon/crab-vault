@@ -1,4 +1,4 @@
-use crab_vault_engine::error::{EngineError, EngineResult};
+use crab_vault::engine::error::{EngineError, EngineResult};
 
 pub fn merge_json_value(
     new: serde_json::Value,

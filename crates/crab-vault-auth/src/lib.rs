@@ -91,7 +91,7 @@ pub struct Permission {
     ///
     /// 支持通配符，例如 `image/*` 或 `*` (Glob 模式)。
     ///
-    /// 大小有限制，每一个通配模式不超过 128 字节、最多 8 个模式
+    /// **大小有限制，每一个通配模式不超过 128 字节、最多 8 个模式**
     #[validate(custom(function = "Self::validate_content_type_pattern"))]
     pub allowed_content_types: Vec<String>,
 }
@@ -108,7 +108,7 @@ pub struct CompiledPermission {
 
 /// HTTP 操作方法枚举。
 ///
-/// `ValueEnum` 用于 `clap` 集成，使其可以在命令行参数中使用。
+/// [`ValueEnum`] 用于 [`clap`] 集成，使其可以在命令行参数中使用。
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone, Copy, Debug, ValueEnum)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum HttpMethod {
@@ -132,9 +132,9 @@ impl JwtEncoder {
         Self { encoding_key }
     }
 
-    /// 将 JWT 声明编码为字符串形式的 Token。
+    /// ## 将 JWT 声明编码为字符串形式的 Token
     ///
-    /// 注意：header 中的 alg 字段和 kid 对应的加密算法需要保持一致
+    /// **注意**：header 中的 alg 字段和 kid 对应的加密算法需要保持一致
     #[inline]
     pub fn encode<P: Serialize>(
         &self,
@@ -147,7 +147,7 @@ impl JwtEncoder {
         let key = self
             .encoding_key
             .get(kid)
-            .ok_or(InternalError("No such kid found in your Encoder".into()))?;
+            .ok_or(InternalError("No such kid found in your encoder".into()))?;
 
         Ok(jsonwebtoken::encode(header, claims, key)?)
     }
@@ -321,7 +321,7 @@ impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
     /// 默认值:
     /// - `iss`: `None`
     /// - `aud`: 空 `Vec`
-    /// - `exp`: `一小时后`
+    /// - `exp`: `一小时后` 的时间戳
     /// - `nbf`: `0` (立即生效)
     /// - `iat`: 当前时间的 Unix 时间戳
     /// - `jti`: 一个使用 [`Uuid::new_v4`] 新生成的 [`Uuid`]
@@ -597,7 +597,8 @@ impl From<axum::http::Method> for HttpMethod {
 }
 
 impl HttpMethod {
-    /// 判断一个方法是否安全，
+    /// ## 判断一个方法是否安全
+    ///
     /// 根据 [MDN](https://developer.mozilla.org/zh-CN/docs/Glossary/Safe/HTTP)
     /// 以及 [rfc7231](https://datatracker.ietf.org/doc/html/rfc7231#section-4.2.1)
     /// 对于安全的定义
