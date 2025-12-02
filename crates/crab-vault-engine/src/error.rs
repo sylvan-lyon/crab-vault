@@ -54,7 +54,7 @@ pub enum EngineError {
 impl From<serde_json::error::Error> for EngineError {
     fn from(value: serde_json::error::Error) -> Self {
         use serde_json::error::Category;
-        let msg = match value.classify() {
+        let kind = match value.classify() {
             Category::Io => "io",
             Category::Syntax => "syntax",
             Category::Data => "data",
@@ -62,7 +62,7 @@ impl From<serde_json::error::Error> for EngineError {
         };
 
         EngineError::Serde {
-            error: msg,
+            error: kind,
             line: value.line(),
             column: value.column(),
         }

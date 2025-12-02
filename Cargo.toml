@@ -1,6 +1,6 @@
 [package]
 name = "crab-vault"
-version = "0.2.11"
+version = "0.2.12"
 edition = "2024"
 description = "An object storage service written in rust."
 license = "MIT"
@@ -42,14 +42,14 @@ validator = { version = "0.20", features = ["derive"]}
 axum = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
-chrono.workspace = true
+chrono = { workspace = true}
 clap = { workspace = true }
 config = { workspace = true }
 glob = { workspace = true }
 jsonwebtoken = { workspace = true }
 rand = { workspace = true }
-regex ={ workspace = true }
-serde.workspace = true
+regex = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
@@ -61,7 +61,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 #
-crab-vault-auth = { path = "crates/crab-vault-auth", version = "0.2.11", features = ["server-side"] }
-crab-vault-engine = { path = "crates/crab-vault-engine", version = "0.2.11" }
-crab-vault-utils = { path = "crates/crab-vault-utils", version = "0.2.11" }
-crab-vault-logger = { path= "crates/crab-vault-logger", version = "0.2.11" }
+crab-vault-auth = { path = "crates/crab-vault-auth", version = "0.2", features = ["server-side"] }
+crab-vault-engine = { path = "crates/crab-vault-engine", version = "0.2" }
+crab-vault-utils = { path = "crates/crab-vault-utils", version = "0.2" }
+crab-vault-logger = { path= "crates/crab-vault-logger", version = "0.2" }

@@ -38,6 +38,7 @@ pub struct AuthConfig {
 }
 
 #[derive(Default, Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields, default)]
 pub struct PathRule {
     /// 路径的通配符，UNIX shell 通配符
     pub(super) pattern: String,
@@ -48,6 +49,7 @@ pub struct PathRule {
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields, default)]
 pub struct JwtEncoderConfig {
     encoding_keys: Vec<KeyInfo>,
     issue_as: String,
@@ -55,11 +57,13 @@ pub struct JwtEncoderConfig {
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
+#[serde(deny_unknown_fields, default)]
 pub struct JwtDecoderConfig {
+    /// 主键是 issuer，对应的值是 [`KeyInfo`]
     decoding_keys: Vec<(String, KeyInfo)>,
     leeway: u64,
     reject_tokens_expiring_in_less_than: u64,
-    aud: Vec<String>,
+    audience: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -219,7 +223,7 @@ impl TryFrom<JwtDecoderConfig> for JwtDecoder {
             decoding_keys,
             leeway,
             reject_tokens_expiring_in_less_than,
-            aud,
+            audience: aud,
         }: JwtDecoderConfig,
     ) -> Result<Self, Self::Error> {
         let mut mapping = HashMap::new();
@@ -283,7 +287,7 @@ impl KeyInfo {
 
         if res.len() < 32 {
             tracing::warn!(
-                "the secret key `{}` is too short to prevent brute force cracking",
+                "the secret key `{}` is too short to prevent brute cracking",
                 self.key
                     .get(0..4)
                     .map(|val| format!("{val}..."))

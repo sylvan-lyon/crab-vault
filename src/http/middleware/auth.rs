@@ -20,7 +20,7 @@ use tower::{Layer, Service};
 
 use crate::{
     app_config,
-    error::{api::ApiError, cli::MultiCliError},
+    error::{api::{ApiError, ClientError}, cli::MultiCliError},
 };
 
 #[derive(Clone)]
@@ -141,11 +141,13 @@ impl AuthLayer {
 impl<Inner> Layer<Inner> for AuthLayer {
     type Service = AuthMiddleware<Inner>;
 
-    fn layer(&self, service: Inner) -> Self::Service {
+    fn layer(&self, inner: Inner) -> Self::Service {
+        let Self(jwt_config, path_rules) = self.clone();
+
         AuthMiddleware {
-            inner: service,
-            jwt_config: self.0.clone(),
-            path_rules: self.1.clone(),
+            inner,
+            jwt_config,
+            path_rules,
         }
     }
 }
@@ -175,15 +177,15 @@ async fn extract_and_validate_token(
     // 4. 检查 content-length，如果没过这个要求，那更是演都不演了
     let content_length = headers
         .get(CONTENT_LENGTH)
-        .ok_or(ApiError::MissingContentLength)?
+        .ok_or(ApiError::Client(ClientError::MissingContentLength))?
         .to_str()
-        .map_err(|_| ApiError::EncodingError)?
+        .map_err(|_| ApiError::Client(ClientError::HeaderWithOpaqueBytes))?
         .parse()
-        .map_err(|_| ApiError::ValueParsingError)?;
+        .map_err(|_| ApiError::Client(ClientError::ValueParsingError))?;
 
     let perm = jwt.load.clone().compile();
     if !perm.check_size(content_length) {
-        return Err(ApiError::BodyTooLarge.into());
+        return Err(ApiError::Client(ClientError::BodyTooLarge).into());
     }
 
     // 5. 检查资源路径匹配和请求方法
@@ -194,11 +196,11 @@ async fn extract_and_validate_token(
     // 6. 检查 content-type
     let content_type = headers
         .get(CONTENT_TYPE)
-        .ok_or(ApiError::MissingContentType)?
+        .ok_or(ApiError::Client(ClientError::MissingContentType))?
         .to_str()
-        .map_err(|_| ApiError::InvalidContentType)?;
+        .map_err(|_| ApiError::Client(ClientError::InvalidContentType))?;
     if !perm.check_content_type(content_type) {
-        return Err(ApiError::InvalidContentType.into());
+        return Err(ApiError::Client(ClientError::InvalidContentType).into());
     }
 
     Ok(jwt.load)

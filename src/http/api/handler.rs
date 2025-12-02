@@ -1,5 +1,5 @@
 use axum::{
-    Json, debug_handler,
+    debug_handler,
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -8,10 +8,10 @@ use axum::{
 use crate::http::{
     api::{
         ApiState,
-        response::{BucketMetaResponse, ObjectMetaResponse},
-        util::merge_json_value,
+        response::{BucketResponse, ObjectResponse},
+        util::merge_json_object,
     },
-    extractor::{auth::RestrictedBytes, meta::NewObjectMetaExtractor},
+    extractor::{auth::RestrictedBytes, meta::{BuckeMetaExtractor, ObjectMetaExtractor}},
 };
 
 use crab_vault::engine::{error::EngineResult, *};
@@ -20,18 +20,14 @@ use crab_vault::engine::{error::EngineResult, *};
 #[debug_handler]
 pub(super) async fn create_bucket(
     State(state): State<ApiState>,
-    Path(bucket_name): Path<String>,
-    Json(payload): Json<serde_json::Value>, // User meta for the bucket
+    meta: BuckeMetaExtractor,
 ) -> EngineResult<StatusCode> {
-    let meta = BucketMeta {
-        name: bucket_name.clone(),
-        created_at: chrono::Utc::now(),
-        updated_at: chrono::Utc::now(),
-        user_meta: payload,
-    };
+    let meta = meta.into_meta();
+
+    tracing::info!("{:?}", meta);
 
     // 操作是幂等的，所以我们不关心它们是否已经存在
-    state.data_src.create_bucket(&bucket_name).await?;
+    state.data_src.create_bucket(&meta.name).await?;
     state.meta_src.create_bucket_meta(&meta).await?;
 
     Ok(StatusCode::CREATED)
@@ -55,19 +51,18 @@ pub(super) async fn head_bucket(
 ) -> EngineResult<Response> {
     let meta = state.meta_src.read_bucket_meta(&bucket_name).await?;
 
-    Ok(BucketMetaResponse::new(meta).into_response())
+    Ok(BucketResponse::new(meta).into_response())
 }
 
 #[debug_handler]
 pub(super) async fn patch_bucket_meta(
     State(state): State<ApiState>,
-    Path(bucket_name): Path<String>,
-    Json(payload): Json<serde_json::Value>,
+    new: BuckeMetaExtractor,
 ) -> EngineResult<StatusCode> {
-    let mut meta = state.meta_src.read_bucket_meta(&bucket_name).await?;
-    meta.user_meta = merge_json_value(payload, meta.user_meta)?;
-    state.meta_src.create_bucket_meta(&meta).await?;
-    state.meta_src.touch_bucket(&bucket_name).await?;
+    let mut old_meta = state.meta_src.read_bucket_meta(&new.name).await?;
+    old_meta.user_meta = merge_json_object(new.user_meta, old_meta.user_meta)?;
+    state.meta_src.create_bucket_meta(&old_meta).await?;
+    state.meta_src.touch_bucket(&new.name).await?;
 
     Ok(StatusCode::OK)
 }
@@ -77,7 +72,7 @@ pub(super) async fn list_buckets_meta(State(state): State<ApiState>) -> EngineRe
     let res = state.meta_src.list_buckets_meta().await?;
     let res = res
         .into_iter()
-        .map(BucketMetaResponse::new)
+        .map(BucketResponse::new)
         .collect::<Vec<_>>();
 
     Ok((StatusCode::OK, axum::Json(res)).into_response())
@@ -88,17 +83,17 @@ pub(super) async fn list_buckets_meta(State(state): State<ApiState>) -> EngineRe
 #[debug_handler]
 pub(super) async fn upload_object(
     State(state): State<ApiState>,
-    meta_extractor: NewObjectMetaExtractor,
+    meta: ObjectMetaExtractor,
     RestrictedBytes(data): RestrictedBytes,
 ) -> EngineResult<StatusCode> {
     // 1. 检查 bucket 是否存在
     state
         .meta_src
-        .read_bucket_meta(&meta_extractor.bucket_name)
+        .read_bucket_meta(&meta.bucket_name)
         .await?;
 
     // 2. 从提取器和数据中创建完整的元数据
-    let meta = meta_extractor.into_meta(&data);
+    let meta = meta.into_meta(&data);
 
     // 3. 原子地写入数据和元数据
     state
@@ -114,7 +109,7 @@ pub(super) async fn upload_object(
 pub(super) async fn get_object(
     State(state): State<ApiState>,
     Path((bucket_name, object_name)): Path<(String, String)>,
-) -> EngineResult<ObjectMetaResponse> {
+) -> EngineResult<ObjectResponse> {
     let meta = state
         .meta_src
         .read_object_meta(&bucket_name, &object_name)
@@ -125,36 +120,36 @@ pub(super) async fn get_object(
         .read_object(&bucket_name, &object_name)
         .await?;
 
-    Ok(ObjectMetaResponse::new(meta, data))
+    Ok(ObjectResponse::new(meta, data))
 }
 
 #[debug_handler]
 pub(super) async fn head_object(
     State(state): State<ApiState>,
     Path((bucket_name, object_name)): Path<(String, String)>,
-) -> EngineResult<ObjectMetaResponse> {
+) -> EngineResult<ObjectResponse> {
     let meta = state
         .meta_src
         .read_object_meta(&bucket_name, &object_name)
         .await?;
 
-    Ok(ObjectMetaResponse::meta_only(meta))
+    Ok(ObjectResponse::meta_only(meta))
 }
 
 #[debug_handler]
 pub(super) async fn patch_object_meta(
     State(state): State<ApiState>,
     Path((bucket_name, object_name)): Path<(String, String)>,
-    Json(payload): Json<serde_json::Value>,
+    new_meta: ObjectMetaExtractor,
 ) -> EngineResult<StatusCode> {
-    let mut meta = state
+    let mut old_meta = state
         .meta_src
         .read_object_meta(&bucket_name, &object_name)
         .await?;
 
-    meta.user_meta = merge_json_value(payload, meta.user_meta)?;
+    old_meta.user_meta = merge_json_object(new_meta.user_meta, old_meta.user_meta)?;
 
-    state.meta_src.create_object_meta(&meta).await?;
+    state.meta_src.create_object_meta(&old_meta).await?;
     state
         .meta_src
         .touch_object(&bucket_name, &object_name)

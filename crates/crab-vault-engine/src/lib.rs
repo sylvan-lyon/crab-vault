@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::error::EngineResult;
 
@@ -14,14 +15,13 @@ pub type MetaSource = fs::FsMetaEngine;
 #[serde(rename_all = "kebab-case")]
 pub struct BucketMeta {
     pub name: String,
+    pub user_meta: Value,
 
     #[serde(alias = "createdAt")]
     pub created_at: DateTime<Utc>,
 
     #[serde(alias = "updatedAt")]
     pub updated_at: DateTime<Utc>,
-
-    pub user_meta: serde_json::Value,
 }
 
 /// Object 的元数据结构
@@ -33,14 +33,13 @@ pub struct ObjectMeta {
     pub size: u64,
     pub content_type: String,
     pub etag: String,
+    pub user_meta: Value,
 
     #[serde(alias = "createdAt")]
     pub created_at: DateTime<Utc>,
 
     #[serde(alias = "updatedAt")]
     pub updated_at: DateTime<Utc>,
-
-    pub user_meta: serde_json::Value,
 }
 
 /// 此 trait 定义了 object 从何处来，所有的操作，都是幂等的
@@ -145,4 +144,27 @@ pub trait MetaEngine: Sized {
 
     /// 更新一个 object 的 last_update 字段
     fn touch_bucket(&self, bucket_name: &str) -> impl Future<Output = EngineResult<()>> + Send;
+}
+
+impl ObjectMeta {
+    pub fn update_with(self, mut rhs: ObjectMeta) -> ObjectMeta {
+        rhs.created_at = self.created_at;
+        rhs
+    }
+}
+
+impl BucketMeta {
+    pub fn new(name: String, user_meta: Value) -> Self {
+        Self {
+            name,
+            user_meta,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    pub fn update_with(self, mut rhs: BucketMeta) -> BucketMeta {
+        rhs.created_at = self.created_at;
+        rhs
+    }
 }

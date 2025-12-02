@@ -4,6 +4,8 @@ use clap::ValueEnum;
 use jsonwebtoken::{EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+#[cfg(feature = "server-side")]
+use std::collections::HashSet;
 use std::vec;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
@@ -98,7 +100,7 @@ pub struct Permission {
 
 #[cfg(feature = "server-side")]
 pub struct CompiledPermission {
-    pub methods: Vec<HttpMethod>,
+    pub methods: HashSet<HttpMethod>,
     pub resource_pattern: Option<String>,
     pub max_size: Option<usize>,
     pub allowed_content_types: Vec<String>,
@@ -125,6 +127,10 @@ pub enum HttpMethod {
     Other,
     /// 代表所有 HTTP 方法，通常用于管理员权限。
     All,
+    /// 代表所有安全的 HTTP 方法，你可以参看 [`HttpMethod::safe`] 获取 **安全** 一词的含义
+    Safe,
+    /// 代表所有不安全的 HTTP 方法，你可以参看 [`HttpMethod::safe`] 获取 **安全** 一词的含义
+    Unsafe,
 }
 
 impl JwtEncoder {
@@ -185,12 +191,10 @@ impl JwtDecoder {
         iss: &[T],
         aud: &[U],
     ) -> Self {
-        let mut validation = Validation::new(
-            *algorithms.first()
-                .expect(
-                    "You should provide at least one algorithm in your accepted algorithm slice!",
-                ),
-        );
+        let mut validation =
+            Validation::new(*algorithms.first().expect(
+                "You should provide at least one algorithm in your accepted algorithm slice!",
+            ));
         validation.validate_aud = true;
         validation.validate_exp = true;
         validation.validate_nbf = true;
@@ -518,7 +522,7 @@ impl Permission {
         }
 
         CompiledPermission {
-            methods,
+            methods: methods.iter().copied().collect(),
             resource_pattern,
             max_size,
             allowed_content_types,
@@ -532,12 +536,18 @@ impl Permission {
 impl CompiledPermission {
     /// ## 检查此权限是否允许执行给定的 HTTP 方法。
     ///
-    /// 如果 `operations` 包含 `HttpMethod::All` 或指定的 `method`，则返回 `true`。
-    pub fn can_perform_method<T>(&self, method: T) -> bool
-    where
-        T: Into<HttpMethod>,
-    {
-        self.methods.contains(&HttpMethod::All) || self.methods.contains(&method.into())
+    /// 此方法会依次检查：
+    ///
+    /// 1. [`Permission`] 中含有 [`All`](HttpMethod::All)，返回 `true`
+    /// 2. [`Permission`] 中含有提供的 [`method`](HttpMethod)，返回 `true`
+    /// 3. [`Permission`] 中是否含有 [`Safe`](HttpMethod::Safe)，若有，且提供的 [`method`](HttpMethod) 的确是安全的，返回 `true`
+    /// 4. [`Permission`] 中是否含有 [`Unsafe`](HttpMethod::Unsafe)，若有，且提供的 [`method`](HttpMethod) 的确是不安全的，返回 `true`
+    /// 5. 其他，返回 false
+    pub fn can_perform_method(&self, method: HttpMethod) -> bool {
+        self.methods.contains(&HttpMethod::All)
+            || self.methods.contains(&method)
+            || (self.methods.contains(&HttpMethod::Safe) && method.safe())
+            || (self.methods.contains(&HttpMethod::Unsafe) && !method.safe())
     }
 
     /// ## 检查此权限是否能访问给定的资源路径。
@@ -619,13 +629,16 @@ impl HttpMethod {
     /// 它们两个一个代表其他请求（rfc规范之外的），一个代表所有的请求，包括 rfc 规范之外的，所以都视为不安全
     pub fn safe(self) -> bool {
         match self {
-            HttpMethod::Connect
+            // safe 不必说，必然是安全的
+            HttpMethod::Safe
+            | HttpMethod::Connect
             | HttpMethod::Get
             | HttpMethod::Head
             | HttpMethod::Options
             | HttpMethod::Trace => true,
             // unsafe operations，这些操作会导致内容改变
-            HttpMethod::Post
+            HttpMethod::Unsafe
+            | HttpMethod::Post
             | HttpMethod::Put
             | HttpMethod::Patch
             | HttpMethod::Delete

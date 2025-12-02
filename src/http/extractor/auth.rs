@@ -6,7 +6,7 @@ use axum::{
 use bytes::Bytes;
 use crab_vault::auth::{Permission, error::AuthError};
 
-use crate::error::api::ApiError;
+use crate::error::api::{ApiError, ClientError};
 
 #[allow(dead_code)]
 pub struct PermissionExtractor(pub Permission);
@@ -40,7 +40,7 @@ where
             Some(p) => p,
             // 如果没有找到权限，这是一个服务器内部错误。
             // 意味着这个提取器被用在了没有被 AuthMiddleware 保护的路由上。
-            // 因为前面的 AuthMiddleware 被设计为如果设置某一个 API 不受保护，那么将返回一个最高级别的 Permission
+            // 因为 AuthMiddleware 被设计为如果设置某一个 API 直接放行，那么将返回一个最高级别的 Permission
             None => unreachable!(),
         }
         .clone();
@@ -54,7 +54,7 @@ where
         };
 
         if !permission.compile().check_size(body_bytes.len()) {
-            return Err(ApiError::BodyTooLarge.into_response());
+            return Err(ApiError::Client(ClientError::BodyTooLarge).into_response());
         }
 
         // 步骤 4: 验证通过，返回包装后的 Bytes
