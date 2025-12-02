@@ -24,18 +24,10 @@ http://your-server-address:32767
 1. **系统元数据**: 使用标准的 HTTP 头部，例如 `Content-Type`, `ETag` 等。
 2. **用户元数据**: 您可以通过添加 `X-Crab-Vault-User-Meta` 自定义请求头来存储您自己的键值对信息。
     * 例如：`X-Crab-Vault-User-Meta:{"position":"Chongqing China","shot_on":"International Labour Day"}`。
-    * 注意：这个头部的值必须为 **BASE64_STANDARD** 编码的，<u>往后的实例为了可读性，我们都使用未编码的原始数据</u>
+    * 注意：这个头部的值必须为 **BASE64_STANDARD** 编码的 utf-8 字符串，<u>往后的实例为了可读性，我们都使用未编码的原始数据</u>
     * 同时为了方便，您传递或者我返回时，这个用户自定义信息均位于 `X-Crab-Vault-User-Meta` 头部。
     * 在响应中，这些元数据也会以相同的头部格式返回。
-    * 默认情况下，如果不指定头部，我们将把 `X-Crab-Vault-User-Meta` 设置为空的对象，如对于桶，不指定的话大概会返回下面的内容
-```json
-{
-    "name": "some",
-    "created-at": "2025-08-20T05:02:40.777065800Z",
-    "updated-at": "2025-08-20T05:02:40.777068400Z",
-    "user-meta": {}
-}
-```
+    * 默认情况下，如果不指定头部，我们将把 `X-Crab-Vault-User-Meta` 设置为空的对象
 
 ### ❌ 错误处理
 
@@ -106,7 +98,7 @@ curl -X DELETE http://localhost:32767/my-awesome-bucket
     * `bucket_name` (string, required): 对象所在的存储桶。
     * `object_name` (string, required): 对象的完整路径名，例如 `images/avatars/user123.jpg`。
 * **请求头**:
-    * `Content-Type` (string, optional): 对象的 MIME 类型，默认为 `application/octet-stream`。
+    * `Content-Type` (string, required): 对象的 MIME 类型。
     * `X-Crab-Vault-User-Meta` (string, optional): JSON 形式的用户自定义元数据。
 * **请求体**: 对象的原始二进制数据。
 * **成功响应**:

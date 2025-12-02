@@ -15,7 +15,7 @@ issue_as = "overflow"
 audience = ["crab-vault"]
 
 [server.auth.jwt_decoder_config]
-aud = ["crab-vault", "crab vault", "sylvan"]
+audience = ["crab-vault", "crab vault", "sylvan"]
 leeway = 0
 reject_tokens_expiring_in_less_than = 0
 decoding_keys = [

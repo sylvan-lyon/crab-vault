@@ -1,6 +1,6 @@
 [package]
 name = "crab-vault-utils"
-version = "0.2.11"
+version = "0.2.12"
 edition = "2024"
 description = "All the utils of crab vault"
 license = "MIT"
