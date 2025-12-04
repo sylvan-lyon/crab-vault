@@ -20,7 +20,10 @@ use tower::{Layer, Service};
 
 use crate::{
     app_config,
-    error::{api::{ApiError, ClientError}, cli::MultiCliError},
+    error::{
+        api::{ApiError, ClientError},
+        cli::MultiCliError,
+    },
 };
 
 #[derive(Clone)]
@@ -44,7 +47,7 @@ impl PathRulesCache {
     async fn should_not_protect(&self, path: &str, method: HttpMethod) -> bool {
         let path_rules = self
             .path_rules
-            .get_or_init(async || app_config::server().auth().get_compiled_path_rules())
+            .get_or_init(async || app_config::auth().get_compiled_path_rules())
             .await;
 
         for (pattern, allowed_method) in path_rules {
@@ -125,8 +128,7 @@ impl AuthLayer {
     pub fn new() -> Self {
         Self(
             Arc::new(
-                app_config::server()
-                    .auth()
+                app_config::auth()
                     .decoder()
                     .clone()
                     .try_into()

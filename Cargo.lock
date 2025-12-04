@@ -383,6 +383,7 @@ dependencies = [
  "clap",
  "glob",
  "jsonwebtoken",
+ "rand",
  "serde",
  "serde_json",
  "thiserror",

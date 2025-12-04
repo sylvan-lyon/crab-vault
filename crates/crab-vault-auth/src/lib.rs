@@ -1,11 +1,9 @@
 pub mod error;
 
 use clap::ValueEnum;
-use jsonwebtoken::{EncodingKey, Header};
+use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-#[cfg(feature = "server-side")]
-use std::collections::HashSet;
 use std::vec;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
@@ -15,13 +13,15 @@ use base64::Engine;
 #[cfg(feature = "server-side")]
 use glob::Pattern;
 #[cfg(feature = "server-side")]
-use jsonwebtoken::{Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{DecodingKey, Validation};
 
 use crate::error::AuthError;
 
 pub struct JwtEncoder {
-    /// 用于签发 JWT 的密钥。从 kid 到 [`EncodingKey`] 的映射
-    pub encoding_key: HashMap<String, EncodingKey>,
+    /// 用于签发 JWT 的密钥。从 kid 到 ([`EncodingKey`], [`Algorithm`]) 的映射
+    pub encoding_key: HashMap<String, (EncodingKey, Algorithm)>,
+
+    kids: Vec<String>
 }
 
 #[cfg(feature = "server-side")]
@@ -100,7 +100,7 @@ pub struct Permission {
 
 #[cfg(feature = "server-side")]
 pub struct CompiledPermission {
-    pub methods: HashSet<HttpMethod>,
+    pub methods: Vec<HttpMethod>,
     pub resource_pattern: Option<String>,
     pub max_size: Option<usize>,
     pub allowed_content_types: Vec<String>,
@@ -134,8 +134,10 @@ pub enum HttpMethod {
 }
 
 impl JwtEncoder {
-    pub fn new(encoding_key: HashMap<String, EncodingKey>) -> Self {
-        Self { encoding_key }
+    #[inline]
+    pub fn new(encoding_key: HashMap<String, (EncodingKey, Algorithm)>) -> Self {
+        let kids = encoding_key.keys().cloned().collect();
+        Self { encoding_key, kids }
     }
 
     /// ## 将 JWT 声明编码为字符串形式的 Token
@@ -144,18 +146,25 @@ impl JwtEncoder {
     #[inline]
     pub fn encode<P: Serialize>(
         &self,
-        header: &Header,
         claims: &Jwt<P>,
         kid: &str,
     ) -> Result<String, AuthError> {
         use AuthError::InternalError;
 
-        let key = self
+        let (key, alg) = self
             .encoding_key
             .get(kid)
             .ok_or(InternalError("No such kid found in your encoder".into()))?;
 
-        Ok(jsonwebtoken::encode(header, claims, key)?)
+        let mut header = Header::new(*alg);
+        header.kid = Some(kid.to_string());
+
+        Ok(jsonwebtoken::encode(&header, claims, key)?)
+    }
+
+    pub fn encode_randomly<P: Serialize>(&self, claims: &Jwt<P>) -> Result<String, AuthError> {
+        let random_kid = &self.kids[rand::random_range(..self.kids.len())];
+        self.encode(claims, random_kid)
     }
 }
 
@@ -218,12 +227,14 @@ impl JwtDecoder {
     /// ## 设置 (iss, kid) 到 [`DecodingKey`] 的映射
     ///
     /// 注意  [`mapping`](HashMap) 的联合主键的顺序是 (iss, kid)，别搞反了！
+    #[inline]
     pub fn iss_kid_dec(mut self, mapping: HashMap<(String, String), DecodingKey>) -> Self {
         self.decoding_keys = mapping;
         self
     }
 
     /// ## 设置接受的算法
+    #[inline]
     pub fn algorithms(mut self, algorithms: &[Algorithm]) -> Self {
         self.validation.algorithms = algorithms.to_vec();
         self
@@ -245,14 +256,14 @@ impl JwtDecoder {
 
     /// ## 设置接受的 leeway
     #[inline]
-    pub fn leeway(mut self, leeway: u64) -> Self {
+    pub const fn leeway(mut self, leeway: u64) -> Self {
         self.validation.leeway = leeway;
         self
     }
 
     /// ## 临期的 token 不予通过
     #[inline]
-    pub fn reject_tokens_expiring_in_less_than(mut self, tolerance: u64) -> Self {
+    pub const fn reject_tokens_expiring_in_less_than(mut self, tolerance: u64) -> Self {
         self.validation.reject_tokens_expiring_in_less_than = tolerance;
         self
     }
@@ -264,19 +275,53 @@ impl JwtDecoder {
     /// 2. 验证 `exp` 和 `nbf` 时间戳。
     /// 3. 根据 `config.validation` 中的设置验证 `iss` 和 `aud`。
     ///
-    /// ### 注意这个函数的泛型参数是 `P`，返回值类型是 `Jwt<P>`，
+    /// ### 泛型参数说明
     ///
-    /// #### 所以需要这样写：
+    /// 注意这个函数的泛型参数 `P` 代表的是 **载荷 (Payload)** 的类型，而不是 `Jwt` 本身。
     ///
-    /// ```rust,ignore
-    /// let jwt = decoder.decode::<Permission>(token)?;
-    /// // 这个 jwt 解析出来的类型是 Jwt<Permission>
+    /// ### 代码示例
+    ///
+    /// #### 推荐写法 (Best Practice)
+    ///
+    /// 利用 Rust 的类型推断，显式标注变量类型，代码最为清晰：
+    ///
+    /// ```rust,no_run
+    /// # use crab_vault_auth::{JwtDecoder, Jwt, Permission, error::AuthError};
+    /// # fn example(decoder: &JwtDecoder, token: &str) -> Result<(), AuthError> {
+    /// // 编译器会自动推断出 P 是 Permission
+    /// let jwt: Jwt<Permission> = decoder.decode(token)?;
+    /// # Ok(())
+    /// # }
     /// ```
     ///
-    /// #### 而不是这样：
-    /// ```rust,ignore
-    /// let jwt = decoder.decode::<Jwt<Permission>>(token)?;
-    /// // 这样的话解析出来的类型就是 Jwt<Jwt<Permission>>，会多套一层
+    /// #### 显式泛型写法
+    ///
+    /// 也可以使用 Turbofish 语法显式指定载荷类型：
+    ///
+    /// ```rust,no_run
+    /// # use crab_vault_auth::{JwtDecoder, Jwt, Permission, error::AuthError};
+    /// # fn example(decoder: &JwtDecoder, token: &str) -> Result<(), AuthError> {
+    /// // 注意：尖括号内只需填 Permission
+    /// let jwt = decoder.decode::<Permission>(token)?;
+    /// // 此时 jwt 的类型为 Jwt<Permission>
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// #### 错误写法 (编译失败)
+    ///
+    /// 不要将 `Jwt<Permission>` 作为泛型参数传入，否则会导致类型嵌套 (`Jwt<Jwt<P>>`)，
+    /// 这会导致类型不匹配从而**编译失败**：
+    ///
+    /// ```rust,compile_fail
+    /// # use crab_vault_auth::{JwtDecoder, Jwt, Permission, AuthError};
+    /// # fn example(decoder: &JwtDecoder, token: &str) -> Result<(), AuthError> {
+    /// // 错误：decode 返回的是 Jwt<T>。
+    /// // 如果传入 T = Jwt<Permission>，返回值就是 Jwt<Jwt<Permission>>。
+    /// // 这与左侧的变量类型 Jwt<Permission> 不匹配。
+    /// let jwt: Jwt<Permission> = decoder.decode::<Jwt<Permission>>(token)?;
+    /// # Ok(())
+    /// # }
     /// ```
     #[cfg(feature = "server-side")]
     pub fn decode<P>(&self, token: &str) -> Result<Jwt<P>, AuthError>
@@ -362,7 +407,7 @@ impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
 
     /// !!! 永不过期 !!!
     #[inline]
-    pub fn never_expires(mut self) -> Self {
+    pub const fn never_expires(mut self) -> Self {
         self.exp = i32::MAX as i64;
         self
     }
@@ -386,13 +431,14 @@ impl<P: Serialize + for<'de> Deserialize<'de>> Jwt<P> {
 
     /// 在构建 token 的时候更换 uuid
     #[inline]
-    pub fn uuid(mut self, id: Uuid) -> Self {
+    pub const fn uuid(mut self, id: Uuid) -> Self {
         self.jti = id;
         self
     }
 }
 
 impl Default for Permission {
+    #[inline]
     fn default() -> Self {
         Self::new_minimum()
     }
@@ -481,13 +527,13 @@ impl Permission {
 
     /// 设置最大的内容长度
     #[inline]
-    pub fn restrict_maximum_size(mut self, max: usize) -> Self {
+    pub const fn restrict_maximum_size(mut self, max: usize) -> Self {
         self.max_size = Some(max);
         self
     }
 
     #[inline]
-    pub fn restrict_maximum_size_option(mut self, max: Option<usize>) -> Self {
+    pub const fn restrict_maximum_size_option(mut self, max: Option<usize>) -> Self {
         self.max_size = max;
         self
     }
@@ -522,7 +568,7 @@ impl Permission {
         }
 
         CompiledPermission {
-            methods: methods.iter().copied().collect(),
+            methods,
             resource_pattern,
             max_size,
             allowed_content_types,

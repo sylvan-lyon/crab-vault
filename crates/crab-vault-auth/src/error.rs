@@ -146,7 +146,7 @@ impl From<serde_json::Error> for AuthError {
 
 impl From<AuthError> for Response {
     #[inline(always)]
-    fn from(val: AuthError) -> axum::response::Response {
+    fn from(val: AuthError) -> Response {
         val.into_response()
     }
 }

@@ -4,10 +4,14 @@ use clap::{CommandFactory, Parser, error::ErrorKind};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    app_config::{data::DataConfig, logger::LoggerConfig, meta::MetaConfig, server::ServerConfig},
+    app_config::{
+        auth::AuthConfig, data::DataConfig, logger::LoggerConfig, meta::MetaConfig,
+        server::ServerConfig,
+    },
     cli::{Cli, CliCommand, run::RunArgs},
 };
 
+pub mod auth;
 pub mod data;
 pub mod logger;
 pub mod meta;
@@ -15,6 +19,10 @@ pub mod server;
 
 static CONFIG: LazyLock<AppConfig> =
     LazyLock::new(|| AppConfig::build_from_config_file().override_by_cli(Cli::parse()));
+
+pub fn auth() -> &'static AuthConfig {
+    &CONFIG.auth
+}
 
 pub fn server() -> &'static ServerConfig {
     &CONFIG.server
@@ -36,10 +44,11 @@ pub fn logger() -> &'static LoggerConfig {
 #[serde(deny_unknown_fields, default)]
 #[derive(Default)]
 pub struct AppConfig {
-    pub(super) server: ServerConfig,
+    pub(super) auth: AuthConfig,
     pub(super) data: DataConfig,
-    pub(super) meta: MetaConfig,
     pub(super) logger: LoggerConfig,
+    pub(super) meta: MetaConfig,
+    pub(super) server: ServerConfig,
 }
 
 impl AppConfig {

@@ -71,7 +71,7 @@ pub fn exec(cmd: Command) {
 }
 
 fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
-    let jwt_encoder_config = app_config::server().auth().encoder();
+    let jwt_encoder_config = app_config::auth().encoder();
     let jwt_encoder: JwtEncoder = jwt_encoder_config
         .clone()
         .try_into()
@@ -114,7 +114,7 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
 
     // 编码 JWT
     let token = jwt_encoder
-        .encode(&header, &claims, header.kid.as_ref().unwrap())
+        .encode(&claims, header.kid.as_ref().unwrap())
         .map_err(|e| CliError::new(ErrorKind::Io, format!("JWT encoding failed: {e}"), None))?;
 
     println!("{}", token);
@@ -140,8 +140,7 @@ fn verify_jwt() -> Result<(), CliError> {
         ));
     }
 
-    let jwt_decoder: JwtDecoder = app_config::server()
-        .auth()
+    let jwt_decoder: JwtDecoder = app_config::auth()
         .decoder()
         .clone()
         .try_into()
