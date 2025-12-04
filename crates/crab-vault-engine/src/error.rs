@@ -30,7 +30,7 @@ pub enum EngineError {
     #[error("bucket meta not found: {bucket}")]
     BucketMetaNotFound { bucket: String },
 
-    #[error("bucket not empty: possibly while deleting: details {bucket}")]
+    #[error("bucket not empty, possibly while deleting, details {bucket}")]
     BucketNotEmpty { bucket: String },
 
     #[error("object not found: {bucket}/{object}")]

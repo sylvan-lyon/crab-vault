@@ -52,7 +52,10 @@ impl PathRulesCache {
 
         for (pattern, allowed_method) in path_rules {
             if pattern.matches(path)
-                && (allowed_method.contains(&HttpMethod::All) || allowed_method.contains(&method))
+                && (allowed_method.contains(&HttpMethod::All)
+                    || allowed_method.contains(&method)
+                    || (allowed_method.contains(&HttpMethod::Safe) && method.safe())
+                    || (allowed_method.contains(&HttpMethod::Unsafe) && !method.safe()))
             {
                 return true;
             }
@@ -177,6 +180,11 @@ async fn extract_and_validate_token(
     let jwt: Jwt<Permission> = decoder.decode(token)?;
 
     // 4. 检查 content-length，如果没过这个要求，那更是演都不演了
+    // 当然，如果访问的是一个 bucket (只有一个) 那就不用检查
+    if path.split('/').filter(|v| !v.is_empty()).count() <= 1 {
+        return Ok(jwt.load)
+    }
+    
     let content_length = headers
         .get(CONTENT_LENGTH)
         .ok_or(ApiError::Client(ClientError::MissingContentLength))?

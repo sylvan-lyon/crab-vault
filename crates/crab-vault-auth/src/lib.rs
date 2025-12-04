@@ -692,4 +692,22 @@ impl HttpMethod {
             | HttpMethod::All => false,
         }
     }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            HttpMethod::Get => "GET",
+            HttpMethod::Post => "POST",
+            HttpMethod::Put => "PUT",
+            HttpMethod::Patch => "PATCH",
+            HttpMethod::Delete => "DELETE",
+            HttpMethod::Head => "HEAD",
+            HttpMethod::Options => "OPTIONS",
+            HttpMethod::Trace => "TRACE",
+            HttpMethod::Connect => "CONNECT",
+            HttpMethod::Other => "OTHER",
+            HttpMethod::All => "ALL",
+            HttpMethod::Safe => "SAFE",
+            HttpMethod::Unsafe => "UNSAFE",
+        }
+    }
 }

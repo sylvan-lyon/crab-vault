@@ -1,28 +1,6 @@
 [server]
 port = 32767
 
-[server.auth]
-# 开发环境所有端点公开访问
-[[server.auth.path_rules]]
-pattern = "*"
-public_methods = ["ALL"]
-
-[server.auth.jwt_encoder_config]
-encoding_keys = [
-    {algorithm = "HS256", form = "der_inline", kid = "id1", key = "test"}
-]
-issue_as = "overflow"
-audience = ["crab-vault"]
-
-[server.auth.jwt_decoder_config]
-audience = ["crab-vault", "crab vault", "sylvan"]
-leeway = 0
-reject_tokens_expiring_in_less_than = 0
-decoding_keys = [
-    ["overflow",       {algorithm = "HS256", form = "der_inline", kid = "id1", key = "test"}],
-    ["brain-overflow", {algorithm = "HS256", form = "der_inline", kid = "id1", key = "test"}]
-]
-
 [logger]
 level = "debug"  # 开发环境使用更详细的日志
 with_ansi = true # 开发环境使用彩色输出
@@ -32,3 +10,23 @@ with_thread = true
 # 开发环境可以不输出到文件
 # dump_path = "./logs"
 # dump_level = "debug"
+
+[[auth.path_rules]]
+pattern = "*"
+public_methods = ["SAFE"]
+
+[auth.jwt_encoder_config]
+encoding_keys = [
+    {algorithm = "HS256", form = "der_inline", kid = "id1", key = "test"}
+]
+issue_as = "overflow"
+audience = ["crab-vault"]
+
+[auth.jwt_decoder_config]
+audience = ["crab-vault", "crab vault", "sylvan"]
+leeway = 0
+reject_tokens_expiring_in_less_than = 0
+decoding_keys = [
+    ["overflow",       {algorithm = "HS256", form = "der_inline", kid = "id1", key = "test"}],
+    ["brain-overflow", {algorithm = "HS256", form = "der_inline", kid = "id1", key = "test"}]
+]
