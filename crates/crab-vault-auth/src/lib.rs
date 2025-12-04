@@ -350,7 +350,7 @@ impl JwtDecoder {
     /// 这意味着任何人都可以伪造这个 JWT 的内容。
     ///
     /// 此函数仅应用于需要查看 Token 内容的调试或日志记录场景。
-    /// 在任何与安全相关的逻辑中，都**必须**使用 [`Jwt::decode`]。
+    /// 在任何与安全相关的逻辑中，都**必须**使用 [`JwtDecoder::decode`]。
     #[cfg(feature = "server-side")]
     pub fn decode_unchecked(token: &str) -> Result<serde_json::Value, AuthError> {
         let mut parts = token.split('.');
