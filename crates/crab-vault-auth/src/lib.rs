@@ -677,13 +677,13 @@ impl HttpMethod {
         match self {
             // safe 不必说，必然是安全的
             HttpMethod::Safe
-            | HttpMethod::Connect
             | HttpMethod::Get
             | HttpMethod::Head
             | HttpMethod::Options
             | HttpMethod::Trace => true,
             // unsafe operations，这些操作会导致内容改变
             HttpMethod::Unsafe
+            | HttpMethod::Connect
             | HttpMethod::Post
             | HttpMethod::Put
             | HttpMethod::Patch
