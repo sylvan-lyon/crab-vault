@@ -11,12 +11,26 @@ env:
 
 jobs:
   build:
-
-    runs-on: ubuntu-latest
-
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+    
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build
-    - name: Run tests
-      run: cargo test --workspace
+      - uses: actions/checkout@v4
+
+      - name: Cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build
+        run: cargo build
+
+      - name: Run tests
+        run: cargo test --workspace
