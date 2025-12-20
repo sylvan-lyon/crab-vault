@@ -17,6 +17,7 @@ use jsonwebtoken::{DecodingKey, Validation};
 
 use crate::error::AuthError;
 
+#[derive(Clone)]
 pub struct JwtEncoder {
     /// 用于签发 JWT 的密钥。从 kid 到 ([`EncodingKey`], [`Algorithm`]) 的映射
     pub encoding_key: HashMap<String, (EncodingKey, Algorithm)>,
@@ -25,6 +26,7 @@ pub struct JwtEncoder {
 }
 
 #[cfg(feature = "server-side")]
+#[derive(Clone)]
 pub struct JwtDecoder {
     /// 用于验证 JWT 的密钥映射。
     ///
@@ -99,6 +101,7 @@ pub struct Permission {
 }
 
 #[cfg(feature = "server-side")]
+#[derive(Clone)]
 pub struct CompiledPermission {
     pub methods: Vec<HttpMethod>,
     pub resource_pattern: Option<String>,
