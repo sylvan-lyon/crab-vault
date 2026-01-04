@@ -4,6 +4,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use crab_vault_engine::error::EngineError;
 
 use crate::http::{
     api::{
@@ -11,7 +12,10 @@ use crate::http::{
         response::{BucketResponse, ObjectResponse},
         util::merge_json_object,
     },
-    extractor::{auth::RestrictedBytes, meta::{BuckeMetaExtractor, ObjectMetaExtractor}},
+    extractor::{
+        auth::RestrictedBytes,
+        meta::{BuckeMetaExtractor, ObjectMetaExtractor},
+    },
 };
 
 use crab_vault::engine::{error::EngineResult, *};
@@ -70,10 +74,7 @@ pub(super) async fn patch_bucket_meta(
 #[debug_handler]
 pub(super) async fn list_buckets_meta(State(state): State<ApiState>) -> EngineResult<Response> {
     let res = state.meta_src.list_buckets_meta().await?;
-    let res = res
-        .into_iter()
-        .map(BucketResponse::new)
-        .collect::<Vec<_>>();
+    let res = res.into_iter().map(BucketResponse::new).collect::<Vec<_>>();
 
     Ok((StatusCode::OK, axum::Json(res)).into_response())
 }
@@ -87,19 +88,27 @@ pub(super) async fn upload_object(
     RestrictedBytes(data): RestrictedBytes,
 ) -> EngineResult<StatusCode> {
     // 1. 检查 bucket 是否存在
-    state
-        .meta_src
-        .read_bucket_meta(&meta.bucket_name)
-        .await?;
+    tracing::warn!("{}{}", &meta.bucket_name, &meta.object_name);
 
     // 2. 从提取器和数据中创建完整的元数据
     let meta = meta.into_meta(&data);
 
     // 3. 原子地写入数据和元数据
-    state
+    match state
         .data_src
         .create_object(&meta.bucket_name, &meta.object_name, &data)
-        .await?;
+        .await {
+            Ok(_) => {},
+            Err(e) => {
+                if let EngineError::BucketNotFound { bucket: _ } = e {
+                    state.data_src.create_bucket(&meta.bucket_name).await?;
+                    state.data_src.create_object(&meta.bucket_name, &meta.object_name, &data).await?;
+                } else {
+                    return Err(e)
+                }
+            },
+        }
+
     state.meta_src.create_object_meta(&meta).await?;
 
     Ok(StatusCode::CREATED)

@@ -1,6 +1,6 @@
 [package]
 name = "crab-vault-auth"
-version = "0.2.14"
+version = "0.2.15"
 edition = "2024"
 description = "The auth sdk for crab vault."
 license = "MIT"

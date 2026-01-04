@@ -49,13 +49,17 @@ pub trait DataEngine: Sized {
     /// 创建一个新的实现了 [`DataEngine`] 的实例
     fn new<T: AsRef<Self::Uri>>(base_dir: T) -> EngineResult<Self>;
 
-    /// 创建一个 bucket
+    /// 创建一个 bucket，如果已经存在，那么不会有任何改变
     fn create_bucket(&self, bucket_name: &str) -> impl Future<Output = EngineResult<()>> + Send;
 
-    /// 删除一个 bucket
+    /// 删除一个 bucket，如果不存在，那么不会有任何改变
     fn delete_bucket(&self, bucket_name: &str) -> impl Future<Output = EngineResult<()>> + Send;
 
-    /// 创建一个 object
+    /// # 创建一个 object
+    ///
+    /// 如果 这个 object 已经存在，将覆盖之
+    /// 如果 `bucket_name` 不存在，则会抛出 [`BucketNotFound`](crate::error::EngineError::BucketNotFound) 异常 
+    ///
     fn create_object(
         &self,
         bucket_name: &str,
