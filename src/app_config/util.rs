@@ -1,69 +1,53 @@
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-};
+use std::collections::HashMap;
 
 use base64::{Engine, prelude::BASE64_STANDARD};
+use chrono::TimeDelta;
 use clap::error::ErrorKind;
-use crab_vault::auth::JwtDecoder;
-use crab_vault::auth::{HttpMethod, JwtEncoder};
-use glob::Pattern;
-use jsonwebtoken::*;
+use crab_vault::auth::{JwtDecoder, JwtEncoder};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey};
 use serde::{Deserialize, Serialize};
 
-use crate::error::fatal::{FatalError, MultiFatalError};
-
-#[derive(Serialize, Deserialize, Default)]
-#[serde(deny_unknown_fields, default)]
-pub struct AuthConfig {
-    /// 这里使用 Vec
-    ///
-    /// 在编译规则时保证如果同一个路径下有多种公开方式时，采取最后指定的公开请求方法而非并集
-    #[serde(default)]
-    pub(super) path_rules: Vec<PathRule>,
-
-    #[serde(default)]
-    pub(super) jwt_encoder_config: JwtEncoderConfig,
-
-    /// jwt 鉴权相关设置
-    #[serde(default)]
-    pub(super) jwt_decoder_config: JwtDecoderConfig,
-}
-
-#[derive(Default, Serialize, Deserialize, Clone)]
-#[serde(deny_unknown_fields, default)]
-pub struct PathRule {
-    /// 路径的通配符，UNIX shell 通配符
-    pub(super) pattern: String,
-
-    /// 无需 token 即可访问的那些方法
-    #[serde(default)]
-    pub(super) public_methods: HashSet<HttpMethod>,
-}
+use crate::{
+    app_config::ConfigItem,
+    error::fatal::{FatalError, FatalResult, MultiFatalError},
+};
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 #[serde(deny_unknown_fields, default)]
-pub struct JwtEncoderConfig {
-    encoding_keys: Vec<KeyInfo>,
+pub struct StaticJwtEncoderConfig {
+    encoding_keys: Vec<Key>,
     issue_as: String,
     audience: Vec<String>,
+    expires_in: i64,
+    not_valid_in: i64,
+}
+
+pub struct JwtEncoderConfig {
+    pub encoder: JwtEncoder,
+    pub issue_as: String,
+    pub audience: Vec<String>,
+    pub expires_in: TimeDelta,
+    pub not_valid_in: TimeDelta,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 #[serde(deny_unknown_fields, default)]
-pub struct JwtDecoderConfig {
+pub struct StaticJwtDecoderConfig {
     /// 主键是 issuer，对应的值是 [`KeyInfo`]
-    decoding_keys: Vec<(String, KeyInfo)>,
+    decoding_keys: Vec<(String, Key)>,
     leeway: u64,
     reject_tokens_expiring_in_less_than: u64,
     audience: Vec<String>,
 }
 
+pub struct JwtDecoderConfig {
+    pub decoder: JwtDecoder,
+}
+
 #[derive(Serialize, Deserialize, Default, Clone)]
-pub struct KeyInfo {
+pub struct Key {
     pub algorithm: Algorithm,
     pub form: KeyForm,
-
     pub kid: String,
 
     #[serde(alias = "path")]
@@ -80,70 +64,27 @@ pub enum KeyForm {
     PemFile,
 }
 
-impl AuthConfig {
-    pub fn encoder(&self) -> &JwtEncoderConfig {
-        &self.jwt_encoder_config
-    }
+impl ConfigItem for StaticJwtEncoderConfig {
+    type RuntimeConfig = JwtEncoderConfig;
 
-    pub fn decoder(&self) -> &JwtDecoderConfig {
-        &self.jwt_decoder_config
-    }
-
-    pub fn get_compiled_path_rules(&self) -> Vec<(Pattern, HashSet<HttpMethod>)> {
-        self.path_rules
-            .iter()
-            .cloned()
-            .filter_map(|rule| rule.compile())
-            .collect()
-    }
-}
-
-impl PartialEq for PathRule {
-    fn eq(&self, other: &Self) -> bool {
-        self.pattern == other.pattern
-    }
-}
-
-impl Eq for PathRule {}
-
-impl Hash for PathRule {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.pattern.hash(state);
-    }
-}
-
-impl PathRule {
-    pub fn compile(&self) -> Option<(Pattern, HashSet<HttpMethod>)> {
-        match Pattern::new(&self.pattern) {
-            Ok(val) => Some((val, self.public_methods.iter().copied().collect())),
-            Err(e) => {
-                tracing::error!(
-                    "the PATH `{}` of path rules is not written in valid UNIX shell format, so this pattern is skipped, if that matters, please check your configuration file, details: {e}",
-                    self.pattern
-                );
-                None
-            }
-        }
-    }
-}
-
-impl TryFrom<JwtEncoderConfig> for JwtEncoder {
-    type Error = MultiFatalError;
-
-    fn try_from(
-        JwtEncoderConfig {
+    fn into_runtime(self) -> FatalResult<JwtEncoderConfig> {
+        let StaticJwtEncoderConfig {
             encoding_keys,
-            issue_as: _,
-            audience: _,
-        }: JwtEncoderConfig,
-    ) -> Result<Self, Self::Error> {
-        let mut mapping = HashMap::new();
-        let mut errors = MultiFatalError::new();
+            issue_as,
+            audience,
+            expires_in,
+            not_valid_in,
+        } = self;
+
+        let (mut keys, mut errors, mut algs, mut kids) =
+            (HashMap::new(), MultiFatalError::new(), vec![], vec![]);
 
         for key in encoding_keys {
             match key.build_as_encode_key() {
                 Ok((kid, alg, key)) => {
-                    mapping.insert(kid, (key, alg));
+                    keys.insert(kid.clone(), (key, alg));
+                    algs.push(alg);
+                    kids.push(kid);
                 }
                 Err(e) => {
                     errors.push(e);
@@ -151,7 +92,7 @@ impl TryFrom<JwtEncoderConfig> for JwtEncoder {
             }
         }
 
-        if mapping.is_empty() {
+        if keys.is_empty() {
             errors.push(FatalError::new(
                 ErrorKind::Io,
                 "you should feed me at least one kid, encoding key pair".to_string(),
@@ -160,57 +101,38 @@ impl TryFrom<JwtEncoderConfig> for JwtEncoder {
         }
 
         if errors.is_empty() {
-            Ok(JwtEncoder::new(mapping))
+            Ok(JwtEncoderConfig {
+                encoder: JwtEncoder::new(keys),
+                issue_as,
+                audience,
+                expires_in: TimeDelta::new(expires_in, 0).unwrap(),
+                not_valid_in: TimeDelta::new(not_valid_in, 0).unwrap(),
+            })
         } else {
             Err(errors)
         }
     }
 }
 
-impl JwtEncoderConfig {
-    pub fn algorithms(&self) -> Vec<Algorithm> {
-        self.encoding_keys.iter().map(|key| key.algorithm).collect()
-    }
+impl ConfigItem for StaticJwtDecoderConfig {
+    type RuntimeConfig = JwtDecoderConfig;
 
-    pub fn kids(&self) -> Vec<String> {
-        self.encoding_keys
-            .iter()
-            .map(|key| &key.kid)
-            .cloned()
-            .collect()
-    }
-
-    pub fn issue_as(&self) -> &str {
-        &self.issue_as
-    }
-
-    pub fn audience(&self) -> &[String] {
-        self.audience.as_slice()
-    }
-}
-
-impl TryFrom<JwtDecoderConfig> for JwtDecoder {
-    type Error = MultiFatalError;
-
-    fn try_from(
-        JwtDecoderConfig {
+    fn into_runtime(self) -> FatalResult<JwtDecoderConfig> {
+        let StaticJwtDecoderConfig {
             decoding_keys,
             leeway,
             reject_tokens_expiring_in_less_than,
             audience: aud,
-        }: JwtDecoderConfig,
-    ) -> Result<Self, Self::Error> {
-        let mut mapping = HashMap::new();
-        let mut errors = MultiFatalError::new();
-        let mut algorithms = vec![];
-        let mut authorized_issuers = vec![];
+        } = self;
+        let (mut keys, mut errors, mut algs, mut issuers) =
+            (HashMap::new(), MultiFatalError::new(), vec![], vec![]);
 
         for (iss, key) in decoding_keys {
             match key.build_as_decode_key() {
                 Ok((kid, alg, key)) => {
-                    authorized_issuers.push(iss.clone());
-                    algorithms.push(alg);
-                    mapping.insert((iss, kid), key);
+                    issuers.push(iss.clone());
+                    algs.push(alg);
+                    keys.insert((iss, kid), key);
                 }
                 Err(e) => {
                     errors.push(e);
@@ -218,7 +140,7 @@ impl TryFrom<JwtDecoderConfig> for JwtDecoder {
             }
         }
 
-        if mapping.is_empty() {
+        if keys.is_empty() {
             errors.push(FatalError::new(
                 ErrorKind::Io,
                 "you should feed me at least one kid, encoding key pair".to_string(),
@@ -227,23 +149,23 @@ impl TryFrom<JwtDecoderConfig> for JwtDecoder {
         }
 
         if errors.is_empty() {
-            Ok(
-                JwtDecoder::new(mapping, &algorithms, &authorized_issuers, &aud)
+            Ok(JwtDecoderConfig {
+                decoder: JwtDecoder::new(keys, &algs, &issuers, &aud)
                     .reject_tokens_expiring_in_less_than(reject_tokens_expiring_in_less_than)
                     .leeway(leeway),
-            )
+            })
         } else {
             Err(errors)
         }
     }
 }
 
-impl KeyInfo {
+impl Key {
     fn get_key(&self) -> Result<Vec<u8>, FatalError> {
         let res = match self.form {
             KeyForm::DerInline => BASE64_STANDARD.decode(self.key.clone()).map_err(|e| {
                 FatalError::from(e).when(format!(
-                    "while decoding the given jwt secrete key `{}` into binary form",
+                    "while decoding the secrete key `{}` into binary, note this should be encoded in standard base64",
                     self.key
                         .get(0..4)
                         .map(|val| format!("{val}..."))
@@ -383,10 +305,12 @@ impl KeyInfo {
 }
 
 impl KeyForm {
+    #[inline]
     fn is_der(&self) -> bool {
         matches!(self, KeyForm::DerInline | KeyForm::DerFile)
     }
 
+    #[inline]
     fn is_pem(&self) -> bool {
         matches!(self, KeyForm::PemInline | KeyForm::PemFile)
     }

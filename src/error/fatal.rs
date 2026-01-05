@@ -9,26 +9,26 @@ use toml_edit::DatetimeParseError;
 
 use crate::cli::Cli;
 
-pub type CliResult<T> = Result<T, CliError>;
+pub type FatalResult<T> = Result<T, MultiFatalError>;
 
 #[derive(Debug)]
-pub struct CliError {
+pub struct FatalError {
     kind: ErrorKind,
     general_message: String,
     source: Vec<String>,
 }
 
 #[derive(Default)]
-pub struct MultiCliError {
-    errors: Vec<CliError>,
+pub struct MultiFatalError {
+    errors: Vec<FatalError>,
 }
 
-impl MultiCliError {
+impl MultiFatalError {
     pub fn new() -> Self {
         Self { errors: vec![] }
     }
 
-    pub fn add(&mut self, error: CliError) -> &mut Self {
+    pub fn push(&mut self, error: FatalError) -> &mut Self {
         self.errors.push(error);
         self
     }
@@ -47,7 +47,7 @@ impl MultiCliError {
     }
 }
 
-impl CliError {
+impl FatalError {
     pub fn new(kind: ErrorKind, general_message: String, source: Option<String>) -> Self {
         Self {
             kind,
@@ -66,7 +66,7 @@ impl CliError {
             .exit()
     }
 
-    pub fn add_source(mut self, source: String) -> Self {
+    pub fn when(mut self, source: String) -> Self {
         self.source.push(source);
         self
     }
@@ -84,7 +84,7 @@ impl CliError {
     }
 }
 
-impl From<ParseIntError> for CliError {
+impl From<ParseIntError> for FatalError {
     fn from(err: ParseIntError) -> Self {
         Self::new(
             ErrorKind::InvalidValue,
@@ -94,7 +94,7 @@ impl From<ParseIntError> for CliError {
     }
 }
 
-impl From<ParseFloatError> for CliError {
+impl From<ParseFloatError> for FatalError {
     fn from(err: ParseFloatError) -> Self {
         Self::new(
             ErrorKind::InvalidValue,
@@ -104,7 +104,7 @@ impl From<ParseFloatError> for CliError {
     }
 }
 
-impl From<ParseBoolError> for CliError {
+impl From<ParseBoolError> for FatalError {
     fn from(err: ParseBoolError) -> Self {
         Self::new(
             ErrorKind::InvalidValue,
@@ -114,7 +114,7 @@ impl From<ParseBoolError> for CliError {
     }
 }
 
-impl From<DatetimeParseError> for CliError {
+impl From<DatetimeParseError> for FatalError {
     fn from(err: DatetimeParseError) -> Self {
         Self::new(
             ErrorKind::InvalidValue,
@@ -124,7 +124,7 @@ impl From<DatetimeParseError> for CliError {
     }
 }
 
-impl From<std::io::Error> for CliError {
+impl From<std::io::Error> for FatalError {
     fn from(err: std::io::Error) -> Self {
         Self::new(
             ErrorKind::Io,
@@ -134,7 +134,7 @@ impl From<std::io::Error> for CliError {
     }
 }
 
-impl From<toml_edit::TomlError> for CliError {
+impl From<toml_edit::TomlError> for FatalError {
     fn from(value: toml_edit::TomlError) -> Self {
         Self::new(
             ErrorKind::Io,
@@ -144,13 +144,13 @@ impl From<toml_edit::TomlError> for CliError {
     }
 }
 
-impl From<base64::DecodeError> for CliError {
+impl From<base64::DecodeError> for FatalError {
     fn from(value: base64::DecodeError) -> Self {
         Self::new(ErrorKind::Io, format!("base64 error: {}", value), None)
     }
 }
 
-impl From<AuthError> for CliError {
+impl From<AuthError> for FatalError {
     fn from(value: AuthError) -> Self {
         let (general_message, source) = match value {
             AuthError::MissingAuthHeader => ("missing auth header".into(), None),
@@ -191,7 +191,7 @@ impl From<AuthError> for CliError {
     }
 }
 
-impl From<serde_json::Error> for CliError {
+impl From<serde_json::Error> for FatalError {
     fn from(value: serde_json::Error) -> Self {
         match value.classify() {
             serde_json::error::Category::Io => todo!(),

@@ -22,7 +22,7 @@ use crate::{
     app_config,
     error::{
         api::{ApiError, ClientError},
-        cli::MultiCliError,
+        fatal::MultiFatalError,
     },
 };
 
@@ -135,7 +135,7 @@ impl AuthLayer {
                     .decoder()
                     .clone()
                     .try_into()
-                    .map_err(MultiCliError::exit_now)
+                    .map_err(MultiFatalError::exit_now)
                     .unwrap(),
             ),
             Arc::new(PathRulesCache::new()),

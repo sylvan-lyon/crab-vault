@@ -1,4 +1,3 @@
-mod config;
 mod jwt;
 pub mod run;
 
@@ -45,9 +44,6 @@ pub enum CliCommand {
     )]
     Run(run::RunArgs),
 
-    #[command(subcommand, about = "Set / Unset / Show the configuration item(s).", long_about = None)]
-    Config(config::Command),
-
     #[command(subcommand, about = "JWT management commands")]
     Jwt(jwt::Command),
 }
@@ -55,7 +51,6 @@ pub enum CliCommand {
 /// 这是 [`Cli`] 的简短表现，用于判断将要执行那些操作而不获取对应的值
 pub enum Action {
     Run,
-    Config,
     Jwt,
 }
 
@@ -63,7 +58,6 @@ impl CliCommand {
     pub const fn action(&self) -> Action {
         match self {
             CliCommand::Run(_) => Action::Run,
-            CliCommand::Config(_) => Action::Config,
             CliCommand::Jwt(_) => Action::Jwt,
         }
     }
@@ -72,7 +66,7 @@ impl CliCommand {
 pub async fn run() {
     let cli = Cli::parse();
     match cli.action() {
-        Action::Config | Action::Jwt | Action::Run => {
+        Action::Jwt | Action::Run => {
             let Cli {
                 subcommand,
                 config_path,
@@ -84,7 +78,6 @@ pub async fn run() {
 
 async fn exec(subcommand: CliCommand, config_path: String) {
     match subcommand {
-        CliCommand::Config(command) => config::exec(config_path, command).await,
         CliCommand::Jwt(command) => jwt::exec(command),
         CliCommand::Run(_) => crate::http::server::run().await,
     }

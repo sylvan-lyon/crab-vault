@@ -8,7 +8,7 @@ use crate::{
         auth::AuthConfig, data::DataConfig, logger::LoggerConfig, meta::MetaConfig,
         server::ServerConfig,
     },
-    cli::{Cli, CliCommand, run::RunArgs},
+    cli::{Cli, CliCommand, run::RunArgs}, error::fatal::FatalResult,
 };
 
 pub mod auth;
@@ -16,6 +16,7 @@ pub mod data;
 pub mod logger;
 pub mod meta;
 pub mod server;
+pub mod util;
 
 static CONFIG: LazyLock<AppConfig> =
     LazyLock::new(|| AppConfig::build_from_config_file().override_by_cli(Cli::parse()));
@@ -49,6 +50,21 @@ pub struct AppConfig {
     pub(super) logger: LoggerConfig,
     pub(super) meta: MetaConfig,
     pub(super) server: ServerConfig,
+}
+
+/// [`ConfigItem`] 表示一个配置项，实现了这个 trait 的结构就是一个配置项
+///
+/// 一个配置项必须能够转化为某一个 `Self::RuntimeConfig`，这些能够直接在 runtime 获取
+///
+/// 类似于某一个 cache 之类的概念
+///
+/// 在这个转换过程中，可能会出现不同的、大量的错误，我们使用 [`MultiFatalError`](crate::error::fatal::MultiFatalError) 表示
+pub trait ConfigItem
+where
+    Self: for<'de> Deserialize<'de> + Clone + Sized + Default,
+{
+    type RuntimeConfig;
+    fn into_runtime(self) -> FatalResult<Self::RuntimeConfig>;
 }
 
 impl AppConfig {
@@ -159,7 +175,6 @@ impl AppConfig {
                 }
             }
             CliCommand::Jwt(_) => {}
-            CliCommand::Config(_) => {}
         };
         self
     }

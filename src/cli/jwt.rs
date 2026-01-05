@@ -1,5 +1,5 @@
 use crate::app_config;
-use crate::error::cli::{CliError, MultiCliError};
+use crate::error::fatal::{FatalError, MultiFatalError};
 use crab_vault::auth::{HttpMethod, Jwt, JwtDecoder, JwtEncoder, Permission};
 
 use chrono::Duration;
@@ -70,12 +70,12 @@ pub fn exec(cmd: Command) {
     .unwrap()
 }
 
-fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
+fn generate_jwt(args: GenerateArgs) -> Result<(), FatalError> {
     let jwt_encoder_config = app_config::auth().encoder();
     let jwt_encoder: JwtEncoder = jwt_encoder_config
         .clone()
         .try_into()
-        .map_err(MultiCliError::exit_now)
+        .map_err(MultiFatalError::exit_now)
         .unwrap();
 
     let iss = if args.issue_as.is_some() {
@@ -115,16 +115,16 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), CliError> {
     // 编码 JWT
     let token = jwt_encoder
         .encode(&claims, header.kid.as_ref().unwrap())
-        .map_err(|e| CliError::new(ErrorKind::Io, format!("JWT encoding failed: {e}"), None))?;
+        .map_err(|e| FatalError::new(ErrorKind::Io, format!("JWT encoding failed: {e}"), None))?;
 
     println!("{}", token);
     Ok(())
 }
 
-fn verify_jwt() -> Result<(), CliError> {
+fn verify_jwt() -> Result<(), FatalError> {
     let mut token = String::new();
     io::stdin().read_to_string(&mut token).map_err(|e| {
-        CliError::new(
+        FatalError::new(
             ErrorKind::Io,
             format!("Nothing to read from standard input as token input: {e}"),
             None,
@@ -133,7 +133,7 @@ fn verify_jwt() -> Result<(), CliError> {
 
     let token = token.trim();
     if token.is_empty() {
-        return Err(CliError::new(
+        return Err(FatalError::new(
             ErrorKind::Io,
             "No token received from standard input.".to_string(),
             None,
@@ -144,12 +144,12 @@ fn verify_jwt() -> Result<(), CliError> {
         .decoder()
         .clone()
         .try_into()
-        .map_err(MultiCliError::exit_now)
+        .map_err(MultiFatalError::exit_now)
         .unwrap();
 
     // 解码
-    let decoded = JwtDecoder::decode_unchecked(token).map_err(CliError::from)?;
-    let pretty_json = serde_json::to_string_pretty(&decoded).map_err(CliError::from)?;
+    let decoded = JwtDecoder::decode_unchecked(token).map_err(FatalError::from)?;
+    let pretty_json = serde_json::to_string_pretty(&decoded).map_err(FatalError::from)?;
 
     // 验证
     match jwt_decoder.decode::<Permission>(token) {
