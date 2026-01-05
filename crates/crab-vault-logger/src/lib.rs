@@ -6,11 +6,11 @@ pub mod pretty;
 
 #[derive(Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Debug, Default, ValueEnum)]
 pub enum LogLevel {
-    #[default]
     #[serde(alias = "trace", alias = "TRACE")]
     Trace,
     #[serde(alias = "debug", alias = "DEBUG")]
     Debug,
+    #[default]
     #[serde(alias = "info", alias = "INFO")]
     Info,
     #[serde(alias = "warn", alias = "WARN")]

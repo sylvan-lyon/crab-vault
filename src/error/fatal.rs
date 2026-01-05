@@ -18,18 +18,25 @@ pub struct FatalError {
     source: Vec<String>,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct MultiFatalError {
     errors: Vec<FatalError>,
 }
 
 impl MultiFatalError {
-    pub fn new() -> Self {
+    #[inline]
+    pub const fn new() -> Self {
         Self { errors: vec![] }
     }
 
-    pub fn push(&mut self, error: FatalError) -> &mut Self {
+    #[inline]
+    pub fn push(&mut self, error: FatalError) {
         self.errors.push(error);
+    }
+
+    #[inline]
+    pub fn append(&mut self, rhs: &mut MultiFatalError) -> &mut Self {
+        self.errors.append(&mut rhs.errors);
         self
     }
 
@@ -42,8 +49,9 @@ impl MultiFatalError {
         Cli::command().error(ErrorKind::Io, final_message).exit()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.errors.len() == 0
+    #[inline]
+    pub const fn is_empty(&self) -> bool {
+        self.errors.is_empty()
     }
 }
 
@@ -199,5 +207,15 @@ impl From<serde_json::Error> for FatalError {
             serde_json::error::Category::Data => todo!(),
             serde_json::error::Category::Eof => todo!(),
         }
+    }
+}
+
+impl From<glob::PatternError> for FatalError {
+    fn from(e: glob::PatternError) -> Self {
+        Self::new(
+            ErrorKind::Io,
+            format!("pattern incorrect, because {} at {}", e.msg, e.pos),
+            None,
+        )
     }
 }

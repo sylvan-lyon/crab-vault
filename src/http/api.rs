@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use axum::{routing::MethodRouter, Router};
+use crab_vault_auth::JwtDecoder;
 
-use crate::http::middleware::auth::AuthLayer;
+use crate::{app_config::auth::PathRule, http::middleware::auth::AuthLayer};
 
 use crab_vault::engine::{DataSource, MetaSource};
 
@@ -25,7 +26,7 @@ impl ApiState {
     }
 }
 
-pub async fn build_router() -> Router<ApiState> {
+pub async fn build_router(decoder: JwtDecoder, path_rules: Vec<PathRule>) -> Router<ApiState> {
     use self::handler::*;
 
     let object_router = MethodRouter::new()
@@ -50,6 +51,6 @@ pub async fn build_router() -> Router<ApiState> {
         .route("/", axum::routing::get(list_buckets_meta))
         .route("/{bucket_name}", bucket_router)
         .route("/{bucket_name}/{*object_name}", object_router)
-        .layer(AuthLayer::new())
+        .layer(AuthLayer::new(decoder, path_rules))
         .route("/health", health)
 }

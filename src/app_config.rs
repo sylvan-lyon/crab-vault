@@ -1,14 +1,16 @@
-use std::{collections::HashMap, sync::LazyLock};
-
-use clap::{CommandFactory, Parser, error::ErrorKind};
+use clap::{CommandFactory, error::ErrorKind};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     app_config::{
-        auth::AuthConfig, data::DataConfig, logger::LoggerConfig, meta::MetaConfig,
-        server::ServerConfig,
+        auth::{AuthConfig, StaticAuthConfig},
+        data::{DataConfig, StaticDataConfig},
+        logger::{LoggerConfig, StaticLoggerConfig},
+        meta::{MetaConfig, StaticMetaConfig},
+        server::{ServerConfig, StaticServerConfig},
     },
-    cli::{Cli, CliCommand, run::RunArgs}, error::fatal::FatalResult,
+    cli::{Cli, run::RunArgs},
+    error::fatal::{FatalResult, MultiFatalError},
 };
 
 pub mod auth;
@@ -18,38 +20,24 @@ pub mod meta;
 pub mod server;
 pub mod util;
 
-static CONFIG: LazyLock<AppConfig> =
-    LazyLock::new(|| AppConfig::build_from_config_file().override_by_cli(Cli::parse()));
-
-pub fn auth() -> &'static AuthConfig {
-    &CONFIG.auth
-}
-
-pub fn server() -> &'static ServerConfig {
-    &CONFIG.server
-}
-
-pub fn data() -> &'static DataConfig {
-    &CONFIG.data
-}
-
-pub fn meta() -> &'static MetaConfig {
-    &CONFIG.meta
-}
-
-pub fn logger() -> &'static LoggerConfig {
-    &CONFIG.logger
-}
-
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields, default)]
-#[derive(Default)]
+#[derive(Default, Clone)]
+pub struct StaticAppConfig {
+    pub auth: StaticAuthConfig,
+    pub data: StaticDataConfig,
+    pub logger: StaticLoggerConfig,
+    pub meta: StaticMetaConfig,
+    pub server: StaticServerConfig,
+}
+
+#[derive(Clone)]
 pub struct AppConfig {
-    pub(super) auth: AuthConfig,
-    pub(super) data: DataConfig,
-    pub(super) logger: LoggerConfig,
-    pub(super) meta: MetaConfig,
-    pub(super) server: ServerConfig,
+    pub auth: AuthConfig,
+    pub data: DataConfig,
+    pub logger: LoggerConfig,
+    pub meta: MetaConfig,
+    pub server: ServerConfig,
 }
 
 /// [`ConfigItem`] 表示一个配置项，实现了这个 trait 的结构就是一个配置项
@@ -65,49 +53,17 @@ where
 {
     type RuntimeConfig;
     fn into_runtime(self) -> FatalResult<Self::RuntimeConfig>;
+
+    /// 将 [`self`] 转化为 `Self::RuntimeConfig`，并将产生的错误收集到 `errors` 中
+    fn error_recorded(self, errors: &mut MultiFatalError) -> Option<Self::RuntimeConfig> {
+        self.into_runtime()
+            .map_err(|mut e| errors.append(&mut e))
+            .ok()
+    }
 }
 
-impl AppConfig {
-    pub fn get_field_value_map() -> HashMap<&'static str, toml_edit::Item> {
-        use toml_edit::{Item, Value};
-        HashMap::from([
-            ("server.port", Item::Value(Value::from(0))),
-            ("data.source", Item::Value(Value::from(""))),
-            ("meta.source", Item::Value(Value::from(""))),
-            ("logger.level", Item::Value(Value::from(""))),
-            ("logger.dump_path", Item::Value(Value::from(""))),
-            ("logger.with_ansi", Item::Value(Value::from(true))),
-            ("logger.with_file", Item::Value(Value::from(true))),
-            ("logger.with_target", Item::Value(Value::from(true))),
-            ("logger.with_thread", Item::Value(Value::from(true))),
-        ])
-    }
-
-    pub fn get_valid_paths() -> HashMap<&'static str, toml_edit::Item> {
-        use toml_edit::{Item, Table, Value};
-        HashMap::from([
-            ("server", Item::Table(Table::new())),
-            ("data", Item::Table(Table::new())),
-            ("meta", Item::Table(Table::new())),
-            ("logger", Item::Table(Table::new())),
-            ("server.port", Item::Value(Value::from(0))),
-            ("data.source", Item::Value(Value::from(""))),
-            ("meta.source", Item::Value(Value::from(""))),
-            ("logger.level", Item::Value(Value::from(""))),
-            ("logger.dump_path", Item::Value(Value::from(""))),
-            ("logger.with_ansi", Item::Value(Value::from(true))),
-            ("logger.with_file", Item::Value(Value::from(true))),
-            ("logger.with_target", Item::Value(Value::from(true))),
-            ("logger.with_thread", Item::Value(Value::from(true))),
-        ])
-    }
-
-    pub fn build_from_config_file() -> Self {
-        let Cli {
-            subcommand: _,
-            config_path,
-        } = Cli::parse();
-
+impl StaticAppConfig {
+    pub fn from_file(config_path: String) -> Self {
         config::Config::builder()
             .add_source(
                 config::File::with_name(&config_path)
@@ -134,48 +90,76 @@ impl AppConfig {
             })
     }
 
-    pub fn override_by_cli(mut self, cli: Cli) -> Self {
-        let Cli {
-            subcommand: cli,
-            config_path: _,
-        } = cli;
-        match cli {
-            CliCommand::Run(run_args) => {
-                let RunArgs {
-                    port,
-                    data_source,
-                    meta_source,
-                    log_level,
-                    dump_path,
-                    dump_level,
-                } = run_args;
+    pub fn merge_cli(
+        mut self,
+        RunArgs {
+            port,
+            data_source,
+            meta_source,
+            log_level,
+            dump_path,
+            dump_level,
+        }: RunArgs,
+    ) -> Self {
+        if let Some(port) = port {
+            self.server.port = port
+        }
 
-                if let Some(port) = port {
-                    self.server.port = port
-                }
+        if let Some(data_source) = data_source {
+            self.data.source = data_source
+        }
 
-                if let Some(data_source) = data_source {
-                    self.data.source = data_source
-                }
+        if let Some(meta_source) = meta_source {
+            self.meta.source = meta_source
+        }
 
-                if let Some(meta_source) = meta_source {
-                    self.meta.source = meta_source
-                }
+        if let Some(log_level) = log_level {
+            self.logger.level = log_level
+        }
 
-                if let Some(log_level) = log_level {
-                    self.logger.level = log_level
-                }
+        if let Some(dump_path) = dump_path {
+            self.logger.dump_path = Some(dump_path)
+        }
 
-                if let Some(dump_path) = dump_path {
-                    self.logger.dump_path = Some(dump_path)
-                }
-
-                if let Some(dump_level) = dump_level {
-                    self.logger.dump_level = Some(dump_level)
-                }
-            }
-            CliCommand::Jwt(_) => {}
-        };
+        if let Some(dump_level) = dump_level {
+            self.logger.dump_level = dump_level
+        }
         self
+    }
+}
+
+impl ConfigItem for StaticAppConfig {
+    type RuntimeConfig = AppConfig;
+
+    fn into_runtime(self) -> FatalResult<Self::RuntimeConfig> {
+        let StaticAppConfig {
+            auth,
+            data,
+            logger,
+            meta,
+            server,
+        } = self;
+
+        let mut errors = MultiFatalError::new();
+
+        let (auth, data, logger, meta, server) = (
+            auth.error_recorded(&mut errors),
+            data.error_recorded(&mut errors),
+            logger.error_recorded(&mut errors),
+            meta.error_recorded(&mut errors),
+            server.error_recorded(&mut errors),
+        );
+
+        if !errors.is_empty() {
+            Err(errors)
+        } else {
+            Ok(AppConfig {
+                auth: auth.unwrap(),
+                data: data.unwrap(),
+                logger: logger.unwrap(),
+                meta: meta.unwrap(),
+                server: server.unwrap(),
+            })
+        }
     }
 }

@@ -78,7 +78,7 @@ pub async fn run() {
 
 async fn exec(subcommand: CliCommand, config_path: String) {
     match subcommand {
-        CliCommand::Jwt(command) => jwt::exec(command),
-        CliCommand::Run(_) => crate::http::server::run().await,
+        CliCommand::Jwt(command) => jwt::exec(command, config_path),
+        CliCommand::Run(arg) => crate::http::server::run(config_path, arg).await,
     }
 }

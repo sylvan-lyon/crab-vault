@@ -1,7 +1,7 @@
 use std::{net::Ipv4Addr, time::Duration};
 
 use axum::extract::Request;
-use base64::{prelude::BASE64_STANDARD, Engine};
+use base64::{Engine, prelude::BASE64_STANDARD};
 use crab_vault::engine::{DataEngine, DataSource, MetaEngine, MetaSource};
 use tower_http::{
     cors::{self, CorsLayer},
@@ -10,18 +10,23 @@ use tower_http::{
 };
 
 use crate::{
-    app_config,
+    app_config::{self, ConfigItem},
+    cli::run::RunArgs,
     http::api::{self, ApiState},
     logger,
 };
 
-pub async fn run() {
-    logger::init();
+pub async fn run(config_path: String, args: RunArgs) {
+    let config = app_config::StaticAppConfig::from_file(config_path)
+        .merge_cli(args)
+        .into_runtime()
+        .map_err(|e| e.exit_now())
+        .unwrap();
 
-    let data_src =
-        DataSource::new(app_config::data().source()).expect("Failed to create data storage");
-    let meta_src =
-        MetaSource::new(app_config::meta().source()).expect("Failed to create meta storage");
+    logger::init(config.logger);
+
+    let data_src = DataSource::new(&config.data.source).expect("Failed to create data storage");
+    let meta_src = MetaSource::new(&config.meta.source).expect("Failed to create meta storage");
     let state = ApiState::new(data_src, meta_src);
 
     let tracing_layer = TraceLayer::new_for_http()
@@ -44,17 +49,19 @@ pub async fn run() {
         .allow_credentials(false)
         .max_age(Duration::from_secs(3600 * 24));
 
-    let app = api::build_router()
-        .await
-        .layer(cors_layer)
-        .layer(tracing_layer)
-        .layer(normalize_path_layer)
-        .with_state(state);
+    let app = api::build_router(
+        config.auth.jwt_decoder_config.decoder,
+        config.auth.path_rules,
+    )
+    .await
+    .layer(cors_layer)
+    .layer(tracing_layer)
+    .layer(normalize_path_layer)
+    .with_state(state);
 
-    let listener =
-        tokio::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, app_config::server().port()))
-            .await
-            .unwrap();
+    let listener = tokio::net::TcpListener::bind((Ipv4Addr::UNSPECIFIED, config.server.port))
+        .await
+        .unwrap();
 
     tracing::info!(
         "Server running on http://{}",

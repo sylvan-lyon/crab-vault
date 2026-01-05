@@ -1,5 +1,4 @@
 use std::{
-    collections::HashSet,
     convert::Infallible,
     pin::Pin,
     sync::Arc,
@@ -14,15 +13,12 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use crab_vault::auth::{HttpMethod, Jwt, JwtDecoder, Permission, error::AuthError};
-use glob::Pattern;
-use tokio::sync::OnceCell;
 use tower::{Layer, Service};
 
 use crate::{
-    app_config,
+    app_config::auth::PathRule,
     error::{
         api::{ApiError, ClientError},
-        fatal::MultiFatalError,
     },
 };
 
@@ -30,39 +26,7 @@ use crate::{
 pub struct AuthMiddleware<Inner> {
     inner: Inner,
     jwt_config: Arc<JwtDecoder>,
-    path_rules: Arc<PathRulesCache>,
-}
-
-struct PathRulesCache {
-    path_rules: OnceCell<Vec<(Pattern, HashSet<HttpMethod>)>>,
-}
-
-impl PathRulesCache {
-    fn new() -> Self {
-        Self {
-            path_rules: OnceCell::new(),
-        }
-    }
-
-    async fn should_not_protect(&self, path: &str, method: HttpMethod) -> bool {
-        let path_rules = self
-            .path_rules
-            .get_or_init(async || app_config::auth().get_compiled_path_rules())
-            .await;
-
-        for (pattern, allowed_method) in path_rules {
-            if pattern.matches(path)
-                && (allowed_method.contains(&HttpMethod::All)
-                    || allowed_method.contains(&method)
-                    || (allowed_method.contains(&HttpMethod::Safe) && method.safe())
-                    || (allowed_method.contains(&HttpMethod::Unsafe) && !method.safe()))
-            {
-                return true;
-            }
-        }
-
-        false
-    }
+    path_rules: Arc<Vec<PathRule>>,
 }
 
 // 在 Inner 是一个 Service 的情况下，可以为 AuthMiddleware<Inner> 实现 Service
@@ -97,10 +61,7 @@ where
                 }
             };
 
-            if path_rules
-                .should_not_protect(req.uri().path(), req.method().into())
-                .await
-            {
+            if approved(&path_rules, req.uri().path(), req.method().into()).await {
                 req.extensions_mut().insert(Permission::new_root());
                 return call_inner_with_req(req).await;
             }
@@ -124,21 +85,14 @@ where
 }
 
 #[derive(Clone)]
-pub struct AuthLayer(Arc<JwtDecoder>, Arc<PathRulesCache>);
+pub struct AuthLayer(Arc<JwtDecoder>, Arc<Vec<PathRule>>);
 
 impl AuthLayer {
     /// 此函数将在堆上创建一个 [`JwtConfig`] 结构作为这个中间件的配置
-    pub fn new() -> Self {
+    pub fn new(decoder: JwtDecoder, path_rules: Vec<PathRule>) -> Self {
         Self(
-            Arc::new(
-                app_config::auth()
-                    .decoder()
-                    .clone()
-                    .try_into()
-                    .map_err(MultiFatalError::exit_now)
-                    .unwrap(),
-            ),
-            Arc::new(PathRulesCache::new()),
+            Arc::new(decoder),
+            Arc::new(path_rules),
         )
     }
 }
@@ -179,10 +133,8 @@ async fn extract_and_validate_token(
     // 3. 解码并验证JWT
     let jwt: Jwt<Permission> = decoder.decode(token)?;
 
-    if path.split('/').filter(|v| !v.is_empty()).count() <= 1
-        || method.safe()
-    {
-        return Ok(jwt.load)
+    if path.split('/').filter(|v| !v.is_empty()).count() <= 1 || method.safe() {
+        return Ok(jwt.load);
     }
 
     // 4. 检查 content-length，如果没过这个要求，那更是演都不演了
@@ -217,4 +169,8 @@ async fn extract_and_validate_token(
     }
 
     Ok(jwt.load)
+}
+
+async fn approved(rules: &[PathRule], path: &str, method: HttpMethod) -> bool {
+    rules.iter().any(|v| v.approved(path, method))
 }

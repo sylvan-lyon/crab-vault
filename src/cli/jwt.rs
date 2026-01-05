@@ -1,12 +1,10 @@
-use crate::app_config;
-use crate::error::fatal::{FatalError, MultiFatalError};
-use crab_vault::auth::{HttpMethod, Jwt, JwtDecoder, JwtEncoder, Permission};
+use crate::app_config::{self, AppConfig, ConfigItem};
+use crate::error::fatal::FatalError;
+use crab_vault::auth::{HttpMethod, Jwt, JwtDecoder, Permission};
 
 use chrono::Duration;
 use clap::error::ErrorKind;
 use clap::{Args, Subcommand};
-use jsonwebtoken::Header;
-use rand::random_range;
 use std::io::{self, Read};
 
 #[derive(Args)]
@@ -61,33 +59,34 @@ pub struct GenerateArgs {
     pub allowed_content_type: Vec<String>,
 }
 
-pub fn exec(cmd: Command) {
+pub fn exec(cmd: Command, config_path: String) {
+    let config = app_config::StaticAppConfig::from_file(config_path)
+        .into_runtime()
+        .map_err(|e| e.exit_now())
+        .unwrap();
+
     match cmd {
-        Command::Generate(args) => generate_jwt(args),
-        Command::Verify => verify_jwt(),
+        Command::Generate(args) => generate_jwt(args, config),
+        Command::Verify => verify_jwt(config),
     }
     .map_err(|e| e.exit_now())
     .unwrap()
 }
 
-fn generate_jwt(args: GenerateArgs) -> Result<(), FatalError> {
-    let jwt_encoder_config = app_config::auth().encoder();
-    let jwt_encoder: JwtEncoder = jwt_encoder_config
-        .clone()
-        .try_into()
-        .map_err(MultiFatalError::exit_now)
-        .unwrap();
+fn generate_jwt(args: GenerateArgs, config: AppConfig) -> Result<(), FatalError> {
+    let jwt_encoder_config = &config.auth.jwt_encoder_config;
+    let jwt_encoder = &config.auth.jwt_encoder_config.encoder;
 
     let iss = if args.issue_as.is_some() {
         args.issue_as.unwrap()
     } else {
-        jwt_encoder_config.issue_as().to_string()
+        jwt_encoder_config.issue_as.to_string()
     };
 
     let aud = if args.audiences.is_some() {
         args.audiences.unwrap()
     } else {
-        jwt_encoder_config.audience().to_vec()
+        jwt_encoder_config.audience.to_vec()
     };
 
     let payload = Permission::new_minimum()
@@ -100,28 +99,16 @@ fn generate_jwt(args: GenerateArgs) -> Result<(), FatalError> {
         .expires_in(Duration::seconds(args.exp_offset))
         .not_valid_in(Duration::seconds(args.nbf_offset));
 
-    let mut header = {
-        let algorithms = jwt_encoder_config.algorithms();
-        let random_idx = random_range(0..algorithms.len());
-        Header::new(algorithms[random_idx])
-    };
-
-    header.kid = Some({
-        let kids = jwt_encoder_config.kids();
-        let random_idx = random_range(0..kids.len());
-        kids[random_idx].clone()
-    });
-
     // 编码 JWT
     let token = jwt_encoder
-        .encode(&claims, header.kid.as_ref().unwrap())
+        .encode_randomly(&claims)
         .map_err(|e| FatalError::new(ErrorKind::Io, format!("JWT encoding failed: {e}"), None))?;
 
     println!("{}", token);
     Ok(())
 }
 
-fn verify_jwt() -> Result<(), FatalError> {
+fn verify_jwt(config: AppConfig) -> Result<(), FatalError> {
     let mut token = String::new();
     io::stdin().read_to_string(&mut token).map_err(|e| {
         FatalError::new(
@@ -140,12 +127,7 @@ fn verify_jwt() -> Result<(), FatalError> {
         ));
     }
 
-    let jwt_decoder: JwtDecoder = app_config::auth()
-        .decoder()
-        .clone()
-        .try_into()
-        .map_err(MultiFatalError::exit_now)
-        .unwrap();
+    let jwt_decoder = config.auth.jwt_decoder_config.decoder;
 
     // 解码
     let decoded = JwtDecoder::decode_unchecked(token).map_err(FatalError::from)?;

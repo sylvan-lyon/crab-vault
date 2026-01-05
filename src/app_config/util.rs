@@ -22,6 +22,7 @@ pub struct StaticJwtEncoderConfig {
     not_valid_in: i64,
 }
 
+#[derive(Clone)]
 pub struct JwtEncoderConfig {
     pub encoder: JwtEncoder,
     pub issue_as: String,
@@ -40,6 +41,7 @@ pub struct StaticJwtDecoderConfig {
     audience: Vec<String>,
 }
 
+#[derive(Clone)]
 pub struct JwtDecoderConfig {
     pub decoder: JwtDecoder,
 }
