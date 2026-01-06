@@ -25,7 +25,7 @@ pub struct Cli {
 
     /// Location of configuration file.
     #[arg(long = "config-path", short = 'C')]
-    #[arg(default_value = "crab-vault.toml")]
+    #[arg(default_value = "~/.config/crab-vault/crab-vault.toml")]
     pub config_path: String,
 }
 
