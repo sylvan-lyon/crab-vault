@@ -2,7 +2,8 @@ mod jwt;
 pub mod run;
 
 use clap::{
-    builder::{styling, Styles}, ColorChoice, Parser, Subcommand
+    ColorChoice, Parser, Subcommand,
+    builder::{Styles, styling},
 };
 
 #[derive(Parser)]
@@ -25,8 +26,7 @@ pub struct Cli {
 
     /// Location of configuration file.
     #[arg(long = "config-path", short = 'C')]
-    #[arg(default_value = "~/.config/crab-vault/crab-vault.toml")]
-    pub config_path: String,
+    pub config_path: Option<String>,
 }
 
 impl Cli {
@@ -76,7 +76,15 @@ pub async fn run() {
     }
 }
 
-async fn exec(subcommand: CliCommand, config_path: String) {
+async fn exec(subcommand: CliCommand, config_path: Option<String>) {
+    let config_path = config_path.unwrap_or_else(|| {
+        let home_dir = std::env::home_dir().map(|v| v.to_string_lossy().to_string());
+        match home_dir {
+            Some(v) => format!("{v}/.config/crab-vault/crab-vault.toml"),
+            None => "./crab-vault.toml".to_string(),
+        }
+    });
+
     match subcommand {
         CliCommand::Jwt(command) => jwt::exec(command, config_path),
         CliCommand::Run(arg) => crate::http::server::run(config_path, arg).await,

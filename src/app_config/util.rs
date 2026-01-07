@@ -145,7 +145,7 @@ impl ConfigItem for StaticJwtDecoderConfig {
         if keys.is_empty() {
             errors.push(FatalError::new(
                 ErrorKind::Io,
-                "you should feed me at least one kid, encoding key pair".to_string(),
+                "you should feed me at least one kid, decoding key pair".to_string(),
                 None,
             ));
         }

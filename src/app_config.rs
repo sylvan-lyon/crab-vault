@@ -64,6 +64,8 @@ where
 
 impl StaticAppConfig {
     pub fn from_file(config_path: String) -> Self {
+        println!("{config_path}");
+
         config::Config::builder()
             .add_source(
                 config::File::with_name(&config_path)
@@ -75,7 +77,7 @@ impl StaticAppConfig {
                 Cli::command()
                     .error(
                         ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand,
-                        format!("Cannot deserialize the configuration file, details:\n\n    {e}"),
+                        format!("Cannot read the configuration file, details:\n\n    {e}"),
                     )
                     .exit();
             })
@@ -84,7 +86,7 @@ impl StaticAppConfig {
                 Cli::command()
                     .error(
                         ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand,
-                        format!("Cannot understand the configuration file, details:\n\n    {e}"),
+                        format!("Cannot deserialize the configuration file, details:\n\n    {e}"),
                     )
                     .exit();
             })
