@@ -1,4 +1,4 @@
-use clap::{CommandFactory, error::ErrorKind};
+use clap::error::ErrorKind;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -9,8 +9,8 @@ use crate::{
         meta::{MetaConfig, StaticMetaConfig},
         server::{ServerConfig, StaticServerConfig},
     },
-    cli::{Cli, run::RunArgs},
-    error::fatal::{FatalResult, MultiFatalError},
+    cli::run::RunArgs,
+    error::fatal::{FatalError, FatalResult, MultiFatalError},
 };
 
 pub mod auth;
@@ -64,31 +64,29 @@ where
 
 impl StaticAppConfig {
     pub fn from_file(config_path: String) -> Self {
-        println!("{config_path}");
-
         config::Config::builder()
             .add_source(
                 config::File::with_name(&config_path)
-                    .required(false)
+                    .required(true)
                     .format(config::FileFormat::Toml),
             )
             .build()
-            .unwrap_or_else(|e| {
-                Cli::command()
-                    .error(
-                        ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand,
-                        format!("Cannot read the configuration file, details:\n\n    {e}"),
-                    )
-                    .exit();
+            .unwrap_or_else(|_| {
+                FatalError::new(
+                    ErrorKind::Io,
+                    format!("Cannot read configuration file from {config_path}"),
+                    None,
+                )
+                .exit_now()
             })
             .try_deserialize()
-            .unwrap_or_else(|e| {
-                Cli::command()
-                    .error(
-                        ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand,
-                        format!("Cannot deserialize the configuration file, details:\n\n    {e}"),
-                    )
-                    .exit();
+            .unwrap_or_else(|_| {
+                FatalError::new(
+                    ErrorKind::Io,
+                    format!("Cannot deserialize configuration from file {config_path}"),
+                    None,
+                )
+                .exit_now()
             })
     }
 
@@ -126,6 +124,7 @@ impl StaticAppConfig {
         if let Some(dump_level) = dump_level {
             self.logger.dump_level = dump_level
         }
+
         self
     }
 }

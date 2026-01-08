@@ -27,12 +27,12 @@ pub enum Command {
 #[derive(Args, Clone)]
 pub struct GenerateArgs {
     /// Seconds from now when the token becomes valid (Not Before). Defaults to 0 (valid immediately)
-    #[arg(long, default_value_t = 0)]
-    pub nbf_offset: i64,
+    #[arg(long)]
+    pub nbf_offset: Option<i64>,
 
     /// Seconds from now when the token becomes invalid (Expiration time). Defaults to 3600 (ttl: 1hr)
-    #[arg(long, default_value_t = 3600)]
-    pub exp_offset: i64,
+    #[arg(long)]
+    pub exp_offset: Option<i64>,
 
     /// The issuer of this token (if set), if not provided, we'll randomly select one issuer from your configuration file, or make it `null`
     #[arg(long)]
@@ -96,8 +96,14 @@ fn generate_jwt(args: GenerateArgs, config: AppConfig) -> Result<(), FatalError>
         .permit_content_type(args.allowed_content_type);
 
     let claims = Jwt::new(iss, &aud, payload)
-        .expires_in(Duration::seconds(args.exp_offset))
-        .not_valid_in(Duration::seconds(args.nbf_offset));
+        .expires_in(Duration::seconds(
+            args.exp_offset
+                .unwrap_or(config.auth.jwt_encoder_config.expires_in.num_seconds()),
+        ))
+        .not_valid_in(Duration::seconds(
+            args.nbf_offset
+                .unwrap_or(config.auth.jwt_encoder_config.not_valid_in.num_seconds()),
+        ));
 
     // 编码 JWT
     let token = jwt_encoder

@@ -15,7 +15,7 @@ pub type FatalResult<T> = Result<T, MultiFatalError>;
 pub struct FatalError {
     kind: ErrorKind,
     general_message: String,
-    source: Vec<String>,
+    when: Vec<String>,
 }
 
 #[derive(Default, Debug)]
@@ -56,11 +56,11 @@ impl MultiFatalError {
 }
 
 impl FatalError {
-    pub fn new(kind: ErrorKind, general_message: String, source: Option<String>) -> Self {
+    pub fn new(kind: ErrorKind, general_message: String, when: Option<String>) -> Self {
         Self {
             kind,
             general_message,
-            source: match source {
+            when: match when {
                 Some(val) => vec![val],
                 None => vec![],
             },
@@ -70,22 +70,22 @@ impl FatalError {
     pub fn exit_now(self) -> ! {
         let (kind, message) = (self.kind, self.into_message());
         Cli::command()
-            .error(kind, format!("\n\n    {message}"))
+            .error(kind, format!("\n\n{message}"))
             .exit()
     }
 
     pub fn when(mut self, source: String) -> Self {
-        self.source.push(source);
+        self.when.push(source);
         self
     }
 
     pub fn into_message(self) -> String {
-        if self.source.is_empty() {
-            format!("    - {}", self.general_message)
+        if self.when.is_empty() {
+            format!("    * {}", self.general_message)
         } else {
-            let mut message = format!("    - {}", self.general_message);
-            for src in self.source.into_iter().rev() {
-                message.push_str(&format!("\n    | {src}"))
+            let mut message = format!("    * {}", self.general_message);
+            for src in self.when.into_iter().rev() {
+                message.push_str(&format!("\n      {src}"))
             }
             message
         }
