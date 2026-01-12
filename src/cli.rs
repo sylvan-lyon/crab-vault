@@ -80,7 +80,7 @@ async fn exec(subcommand: CliCommand, config_path: Option<String>) {
     let config_path = config_path.unwrap_or_else(|| {
         let home_dir = std::env::home_dir().map(|v| v.to_string_lossy().to_string());
         match home_dir {
-            Some(v) => format!("{v}/.config/crab-vault/crab-vault.toml"),
+            Some(v) => format!("{v}/.config/crab-vault/config.toml"),
             None => "./crab-vault.toml".to_string(),
         }
     });
